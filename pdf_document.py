@@ -88,9 +88,11 @@ class PdfDocument:
         ``rect_pixels`` is (x0, y0, x1, y1) in rendered-pixel coordinates at ``zoom``.
         It is converted to PDF points by dividing by ``zoom``.
 
-        PyMuPDF cannot save back to the path it currently has open, so we write to a
-        temporary file in the same directory and atomically replace the original,
-        then reopen the saved result.
+        The signature is stamped into a separate working copy, not the open
+        document, so a failed save never leaves the in-memory document mutated
+        (which would otherwise double-stamp on a retry). PyMuPDF cannot save back
+        to the path it currently has open, so we write to a temporary file in the
+        same directory and atomically replace the original, then reopen it.
         """
         if self._doc is None or self.path is None:
             raise RuntimeError("No document open")
@@ -98,29 +100,37 @@ class PdfDocument:
         x0, y0, x1, y1 = rect_pixels
         pdf_rect = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom)
 
-        page = self._doc[page_index]
-        page.insert_image(
-            pdf_rect,
-            filename=signature_path,
-            keep_proportion=True,
-            overlay=True,
-        )
-
         target = self.path
         directory = os.path.dirname(os.path.abspath(target)) or "."
         fd, tmp_path = tempfile.mkstemp(suffix=".pdf", dir=directory)
         os.close(fd)
+
+        # Stamp into a working copy; the open document stays untouched until the
+        # replace succeeds, so a retry after a failure can't double-stamp.
+        work = fitz.open()
         try:
-            self._doc.save(tmp_path, garbage=4, deflate=True)
-            self._doc.close()
-            self._doc = None
-            os.replace(tmp_path, target)
+            work.insert_pdf(self._doc)
+            work[page_index].insert_image(
+                pdf_rect,
+                filename=signature_path,
+                keep_proportion=True,
+                overlay=True,
+            )
+            work.save(tmp_path, garbage=4, deflate=True)
         except Exception:
+            work.close()
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
             raise
+        work.close()
+
+        # Release the original handle, then atomically replace and reopen.
+        self._doc.close()
+        self._doc = None
+        try:
+            os.replace(tmp_path, target)
         finally:
-            # Reopen so the viewer keeps working after a save.
-            if self._doc is None and os.path.exists(target):
-                self._doc = fitz.open(target)
-                self.path = target
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            self._doc = fitz.open(target)
+            self.path = target

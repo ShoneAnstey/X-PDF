@@ -86,9 +86,15 @@ class DocumentTab(QWidget):
         return "No document"
 
     # ----- rendering ---------------------------------------------------------
-    def render_current_page(self) -> None:
+    def render_current_page(self, preserve_scroll: bool = False) -> None:
         if not self.doc.is_open:
             return
+
+        h_bar = self.view.horizontalScrollBar()
+        v_bar = self.view.verticalScrollBar()
+        h_ratio = (h_bar.value() / h_bar.maximum()) if h_bar.maximum() else 0.0
+        v_ratio = (v_bar.value() / v_bar.maximum()) if v_bar.maximum() else 0.0
+
         keep_sig = self._signature
         self.scene.clear()
         self._page_item = None
@@ -103,17 +109,37 @@ class DocumentTab(QWidget):
         if keep_sig is not None:
             self.scene.addItem(keep_sig)
             self._signature = keep_sig
+
+        if preserve_scroll:
+            h_bar.setValue(int(h_ratio * h_bar.maximum()))
+            v_bar.setValue(int(v_ratio * v_bar.maximum()))
         self.changed.emit()
 
     # ----- navigation --------------------------------------------------------
+    def _ok_to_discard_signature(self) -> bool:
+        """Ask before throwing away a placed-but-unsaved signature."""
+        if self._signature is None:
+            return True
+        reply = QMessageBox.question(
+            self,
+            "Unsaved signature",
+            "You placed a signature but haven't saved it yet. Discard it?",
+            QMessageBox.Discard | QMessageBox.Cancel,
+        )
+        return reply == QMessageBox.Discard
+
     def next_page(self) -> None:
         if self.doc.is_open and self.page_index < self.doc.page_count - 1:
+            if not self._ok_to_discard_signature():
+                return
             self.page_index += 1
             self._signature = None
             self.render_current_page()
 
     def prev_page(self) -> None:
         if self.doc.is_open and self.page_index > 0:
+            if not self._ok_to_discard_signature():
+                return
             self.page_index -= 1
             self._signature = None
             self.render_current_page()
@@ -130,7 +156,7 @@ class DocumentTab(QWidget):
         if abs(value - self.zoom) < 1e-6:
             return
         self.zoom = value
-        self.render_current_page()
+        self.render_current_page(preserve_scroll=True)
 
     def fit_width(self) -> None:
         if not self.doc.is_open:

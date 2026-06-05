@@ -153,6 +153,8 @@ class MainWindow(QMainWindow):
             return
         widget = self.tabs.widget(index)
         if isinstance(widget, DocumentTab):
+            if not widget._ok_to_discard_signature():
+                return
             widget.close_document()
         self.tabs.removeTab(index)
         if widget is not None:
