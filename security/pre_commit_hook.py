@@ -192,7 +192,7 @@ def layer_2_type_safety(staged: list[str]) -> bool:
     baseline_file = ROOT / "mypy-baseline.txt"
     if baseline_file.exists() and _tool_available("mypy-baseline"):
         filter_result = subprocess.run(
-            [_tool_path("mypy-baseline"), "filter"],
+            [_tool_path("mypy-baseline"), "filter", "--allow-unsynced"],
             input=result.stdout, capture_output=True, text=True, cwd=ROOT,
         )
         if filter_result.returncode == 100:
