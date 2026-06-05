@@ -31,7 +31,7 @@ First use:
 ### Shortcuts
 - Open: `Ctrl+O`  •  Close tab: `Ctrl+W`  •  Sign & Save: `Ctrl+S`
 - Next / Previous page: `PageDown` / `PageUp`
-- Zoom in / out: `Ctrl++` / `Ctrl+-`
+- Zoom in / out: `Ctrl++` / `Ctrl+-`, or **Ctrl + mouse wheel**
 
 ## Downloads (GitHub Actions)
 

@@ -47,18 +47,26 @@ class PdfDocument:
         return self._doc.page_count if self._doc is not None else 0
 
     # ----- rendering ---------------------------------------------------------
-    def render_page(self, index: int, zoom: float) -> QPixmap:
-        """Render page ``index`` to a QPixmap at the given zoom factor."""
+    def render_page(self, index: int, zoom: float, dpr: float = 1.0) -> QPixmap:
+        """Render page ``index`` to a QPixmap at the given zoom factor.
+
+        ``dpr`` is the display's device-pixel ratio. The page is rasterized at
+        ``zoom * dpr`` for crisp text on HiDPI screens, and the returned pixmap is
+        tagged with that ratio so it still occupies ``zoom``-sized logical space.
+        """
         if self._doc is None:
             raise RuntimeError("No document open")
         page = self._doc[index]
-        matrix = fitz.Matrix(zoom, zoom)
+        scale = zoom * dpr
+        matrix = fitz.Matrix(scale, scale)
         pix = page.get_pixmap(matrix=matrix, alpha=False)
         image = QImage(
             pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
         )
         # Copy so the QImage owns its buffer (pix.samples is freed with pix).
-        return QPixmap.fromImage(image.copy())
+        pixmap = QPixmap.fromImage(image.copy())
+        pixmap.setDevicePixelRatio(dpr)
+        return pixmap
 
     def page_size_points(self, index: int) -> tuple[float, float]:
         """Return (width, height) of the page in PDF points."""

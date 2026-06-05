@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsScene,
@@ -41,6 +42,14 @@ class DocumentTab(QWidget):
         self.view.setBackgroundBrush(Qt.darkGray)
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.view.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        # Smooth scaling so the rendered page never looks jagged.
+        self.view.setRenderHints(
+            QPainter.Antialiasing
+            | QPainter.SmoothPixmapTransform
+            | QPainter.TextAntialiasing
+        )
+        # Catch Ctrl+wheel on the scrolling viewport for zoom.
+        self.view.viewport().installEventFilter(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -48,6 +57,20 @@ class DocumentTab(QWidget):
 
         self.doc.load(path)
         self.render_current_page()
+
+    # ----- Ctrl+wheel zoom ---------------------------------------------------
+    def eventFilter(self, obj, event) -> bool:
+        if (
+            obj is self.view.viewport()
+            and event.type() == QEvent.Wheel
+            and event.modifiers() & Qt.ControlModifier
+        ):
+            if event.angleDelta().y() > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
+            return True  # consume so the view doesn't also scroll
+        return super().eventFilter(obj, event)
 
     # ----- info --------------------------------------------------------------
     @property
@@ -71,7 +94,8 @@ class DocumentTab(QWidget):
         self._page_item = None
         self._signature = None
 
-        pixmap = self.doc.render_page(self.page_index, self.zoom)
+        dpr = self.view.devicePixelRatioF() or 1.0
+        pixmap = self.doc.render_page(self.page_index, self.zoom, dpr)
         self._page_item = self.scene.addPixmap(pixmap)
         self._page_item.setZValue(0)
         self.scene.setSceneRect(self._page_item.boundingRect())
