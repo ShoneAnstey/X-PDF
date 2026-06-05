@@ -1,8 +1,8 @@
 @echo off
-REM Build a portable Windows .exe for XPC PDF.
+REM Build a portable Windows .exe for XPDF.
 REM
 REM Run on Windows in a terminal (cmd). Requires Python 3.10+ on PATH.
-REM Output: dist\XPC PDF.exe  (portable, double-click to run)
+REM Output: dist\XPDF.exe  (portable, double-click to run)
 
 setlocal
 set HERE=%~dp0
@@ -25,5 +25,5 @@ rmdir /s /q build 2>nul
 python -m PyInstaller --noconfirm "%ROOT%\packaging\xpc_pdf.spec"
 
 echo.
-echo ^>^> Done: dist\XPC PDF.exe
+echo ^>^> Done: dist\XPDF.exe
 endlocal

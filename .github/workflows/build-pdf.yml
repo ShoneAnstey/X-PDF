@@ -1,6 +1,6 @@
 name: Build binaries
 
-# Builds the portable Windows .exe and the Linux AppImage.
+# Builds the portable Windows .exe, a Windows installer, and the Linux AppImage.
 # Trigger manually from the Actions tab, or on a version tag (v*).
 on:
   workflow_dispatch:
@@ -22,11 +22,18 @@ jobs:
           python -m pip install -r requirements.txt pyinstaller
       - name: Build .exe
         run: python -m PyInstaller --noconfirm packaging/xpc_pdf.spec
-      - name: Upload artifact
+      - name: Build installer (Inno Setup)
+        run: iscc packaging\xpdf_installer.iss
+      - name: Upload portable .exe
         uses: actions/upload-artifact@v4
         with:
-          name: XPC-PDF-windows
-          path: "dist/XPC PDF.exe"
+          name: XPDF-windows-portable
+          path: "dist/XPDF.exe"
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPDF-windows-installer
+          path: "dist/XPDF-Setup.exe"
 
   linux:
     runs-on: ubuntu-latest
@@ -47,5 +54,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: XPC-PDF-linux
-          path: dist/XPC_PDF-x86_64.AppImage
+          name: XPDF-linux
+          path: dist/XPDF-x86_64.AppImage

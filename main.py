@@ -1,28 +1,50 @@
-"""XPC PDF — a simple cross-platform PDF reader with signature stamping.
+"""XPDF — a simple cross-platform PDF reader with signature stamping.
 
 Entry point: creates the Qt application and shows the main window.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from viewer import MainWindow
 
 
+def _icon_path() -> str:
+    # Works both from source (packaging/icon.png) and from a PyInstaller bundle,
+    # where data files are unpacked next to the executable under sys._MEIPASS.
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    for candidate in (
+        os.path.join(base, "icon.png"),
+        os.path.join(base, "packaging", "icon.png"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "packaging", "icon.png"),
+    ):
+        if os.path.exists(candidate):
+            return candidate
+    return ""
+
+
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("XPC PDF")
+    app.setApplicationName("XPDF")
+    app.setApplicationDisplayName("XPDF")
     app.setOrganizationName("XPC")
+
+    icon = _icon_path()
+    if icon:
+        app.setWindowIcon(QIcon(icon))
 
     window = MainWindow()
     window.show()
 
-    # Allow opening a file passed on the command line (e.g. file association).
-    if len(sys.argv) > 1 and sys.argv[1].lower().endswith(".pdf"):
-        window.open_path(sys.argv[1])
+    # Open any PDFs passed on the command line (e.g. file association).
+    for arg in sys.argv[1:]:
+        if arg.lower().endswith(".pdf") and os.path.exists(arg):
+            window.open_path(arg)
 
     return app.exec()
 

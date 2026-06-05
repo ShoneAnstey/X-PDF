@@ -10,7 +10,7 @@ from __future__ import annotations
 from PySide6.QtCore import QSettings
 
 ORG = "XPC"
-APP = "XPC PDF"
+APP = "XPDF"
 
 _SIGNATURE_PATH = "signature/path"
 _LAST_DIR = "files/last_dir"

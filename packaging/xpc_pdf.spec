@@ -1,10 +1,10 @@
-# PyInstaller spec for XPC PDF.
+# PyInstaller spec for XPDF.
 #
 # Build (run on the TARGET OS — PyInstaller does not cross-compile):
 #   pyinstaller pdf/packaging/xpc_pdf.spec
 #
-# Windows  -> dist/XPC PDF.exe   (portable, double-click to run)
-# Linux    -> dist/XPC PDF/      (one-dir bundle, wrapped into an AppImage)
+# Windows  -> dist/XPDF.exe   (portable, double-click to run)
+# Linux    -> dist/XPDF/      (one-dir bundle, wrapped into an AppImage)
 #
 # On Windows the icon is icon.ico; on Linux PyInstaller ignores .ico so we pass None.
 
@@ -23,7 +23,7 @@ a = Analysis(
     [str(pdf_dir / "main.py")],
     pathex=[str(pdf_dir)],
     binaries=[],
-    datas=[],
+    datas=[(str(spec_dir / "icon.png"), ".")],
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
@@ -54,7 +54,7 @@ if is_windows:
         a.zipfiles,
         a.datas,
         [],
-        name="XPC PDF",
+        name="XPDF",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -70,7 +70,7 @@ else:
         a.scripts,
         [],
         exclude_binaries=True,
-        name="XPC PDF",
+        name="XPDF",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -85,5 +85,5 @@ else:
         a.datas,
         strip=False,
         upx=False,
-        name="XPC PDF",
+        name="XPDF",
     )

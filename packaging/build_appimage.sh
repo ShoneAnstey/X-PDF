@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Build a portable Linux AppImage for XPC PDF.
+# Build a portable Linux AppImage for XPDF.
 #
 # Run on Linux (Debian/Ubuntu tested). Requires: python venv with the project deps,
 # plus internet access on first run to download appimagetool. Output:
-#   dist/XPC_PDF-x86_64.AppImage
+#   dist/XPDF-x86_64.AppImage
 #
 set -euo pipefail
 
@@ -18,7 +18,7 @@ echo ">> Installing build tooling (PyInstaller)…"
 "$PY" -m pip install --quiet --upgrade pyinstaller
 
 echo ">> Building one-dir bundle with PyInstaller…"
-rm -rf build "dist/XPC PDF"
+rm -rf build "dist/XPDF"
 "$PY" -m PyInstaller --noconfirm "$ROOT/packaging/xpc_pdf.spec"
 
 APPDIR="build/AppDir"
@@ -27,25 +27,25 @@ rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
          "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 
-cp -r "dist/XPC PDF/." "$APPDIR/usr/bin/"
-cp "$ROOT/packaging/icon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/xpc-pdf.png"
-cp "$ROOT/packaging/icon.png" "$APPDIR/xpc-pdf.png"
+cp -r "dist/XPDF/." "$APPDIR/usr/bin/"
+cp "$ROOT/packaging/icon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/xpdf.png"
+cp "$ROOT/packaging/icon.png" "$APPDIR/xpdf.png"
 
-cat > "$APPDIR/usr/share/applications/xpc-pdf.desktop" <<'DESKTOP'
+cat > "$APPDIR/usr/share/applications/xpdf.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=XPC PDF
-Exec=XPC PDF
-Icon=xpc-pdf
+Name=XPDF
+Exec=XPDF
+Icon=xpdf
 Categories=Office;Viewer;
 MimeType=application/pdf;
 DESKTOP
-cp "$APPDIR/usr/share/applications/xpc-pdf.desktop" "$APPDIR/xpc-pdf.desktop"
+cp "$APPDIR/usr/share/applications/xpdf.desktop" "$APPDIR/xpdf.desktop"
 
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
-exec "$HERE/usr/bin/XPC PDF" "$@"
+exec "$HERE/usr/bin/XPDF" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
@@ -60,6 +60,6 @@ fi
 mkdir -p dist
 echo ">> Building AppImage…"
 # --appimage-extract-and-run avoids needing FUSE on the build host.
-ARCH=x86_64 "$TOOL" --appimage-extract-and-run "$APPDIR" "dist/XPC_PDF-x86_64.AppImage"
+ARCH=x86_64 "$TOOL" --appimage-extract-and-run "$APPDIR" "dist/XPDF-x86_64.AppImage"
 
-echo ">> Done: dist/XPC_PDF-x86_64.AppImage"
+echo ">> Done: dist/XPDF-x86_64.AppImage"

@@ -1,4 +1,8 @@
-"""Main application window: toolbar, page navigation, zoom, signature, save."""
+"""Main application window: tab host, toolbar, and signature actions.
+
+Each open PDF lives in its own DocumentTab. The toolbar actions operate on the
+currently active tab.
+"""
 
 from __future__ import annotations
 
@@ -8,22 +12,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
-    QGraphicsPixmapItem,
-    QGraphicsScene,
-    QGraphicsView,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QTabWidget,
     QToolBar,
 )
 
 import config
-from pdf_document import PdfDocument
-from signature_item import SignatureItem
+from document_tab import DocumentTab
 
-ZOOM_MIN = 0.25
-ZOOM_MAX = 5.0
-ZOOM_STEP = 1.25
 IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.bmp)"
 PDF_FILTER = "PDF files (*.pdf)"
 
@@ -31,22 +29,17 @@ PDF_FILTER = "PDF files (*.pdf)"
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("XPC PDF")
+        self.setWindowTitle("XPDF")
         self.resize(1000, 800)
-
-        self.doc = PdfDocument()
-        self.page_index = 0
-        self.zoom = 1.5
-        self._page_item: QGraphicsPixmapItem | None = None
-        self._signature: SignatureItem | None = None
-
-        self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene)
-        self.view.setBackgroundBrush(Qt.darkGray)
-        self.view.setDragMode(QGraphicsView.ScrollHandDrag)
-        self.view.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-        self.setCentralWidget(self.view)
         self.setAcceptDrops(True)
+
+        self.tabs = QTabWidget()
+        self.tabs.setTabsClosable(True)
+        self.tabs.setMovable(True)
+        self.tabs.setDocumentMode(True)
+        self.tabs.tabCloseRequested.connect(self.close_tab)
+        self.tabs.currentChanged.connect(self._update_status)
+        self.setCentralWidget(self.tabs)
 
         self._build_actions()
         self._build_toolbar()
@@ -56,30 +49,42 @@ class MainWindow(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
 
+    # ----- current tab helper ------------------------------------------------
+    def current_tab(self) -> DocumentTab | None:
+        widget = self.tabs.currentWidget()
+        return widget if isinstance(widget, DocumentTab) else None
+
     # ----- UI construction ---------------------------------------------------
     def _build_actions(self) -> None:
         self.act_open = QAction("Open", self)
         self.act_open.setShortcut(QKeySequence.Open)
         self.act_open.triggered.connect(self.open_dialog)
 
+        self.act_close_tab = QAction("Close Tab", self)
+        self.act_close_tab.setShortcut(QKeySequence(Qt.CTRL | Qt.Key_W))
+        self.act_close_tab.triggered.connect(
+            lambda: self.close_tab(self.tabs.currentIndex())
+        )
+        self.addAction(self.act_close_tab)
+
         self.act_prev = QAction("Previous", self)
         self.act_prev.setShortcut(QKeySequence(Qt.Key_PageUp))
-        self.act_prev.triggered.connect(self.prev_page)
+        self.act_prev.triggered.connect(lambda: self._on_tab(lambda t: t.prev_page()))
 
         self.act_next = QAction("Next", self)
         self.act_next.setShortcut(QKeySequence(Qt.Key_PageDown))
-        self.act_next.triggered.connect(self.next_page)
+        self.act_next.triggered.connect(lambda: self._on_tab(lambda t: t.next_page()))
 
         self.act_zoom_in = QAction("Zoom In", self)
         self.act_zoom_in.setShortcut(QKeySequence.ZoomIn)
-        self.act_zoom_in.triggered.connect(self.zoom_in)
+        self.act_zoom_in.triggered.connect(lambda: self._on_tab(lambda t: t.zoom_in()))
 
         self.act_zoom_out = QAction("Zoom Out", self)
         self.act_zoom_out.setShortcut(QKeySequence.ZoomOut)
-        self.act_zoom_out.triggered.connect(self.zoom_out)
+        self.act_zoom_out.triggered.connect(lambda: self._on_tab(lambda t: t.zoom_out()))
 
         self.act_fit = QAction("Fit Width", self)
-        self.act_fit.triggered.connect(self.fit_width)
+        self.act_fit.triggered.connect(lambda: self._on_tab(lambda t: t.fit_width()))
 
         self.act_set_sig = QAction("Set Signature", self)
         self.act_set_sig.triggered.connect(self.set_signature_image)
@@ -112,85 +117,54 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("No document")
         self.statusBar().addPermanentWidget(self.status_label)
 
+    def _on_tab(self, fn) -> None:
+        tab = self.current_tab()
+        if tab is not None:
+            fn(tab)
+
     # ----- document handling -------------------------------------------------
     def open_dialog(self) -> None:
         start_dir = config.get_last_dir() or os.path.expanduser("~")
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open PDF", start_dir, PDF_FILTER
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Open PDF", start_dir, PDF_FILTER)
         if path:
             self.open_path(path)
 
     def open_path(self, path: str) -> None:
+        # If the file is already open, just focus its tab.
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            if isinstance(widget, DocumentTab) and widget.path == path:
+                self.tabs.setCurrentIndex(i)
+                return
         try:
-            self.doc.load(path)
-        except Exception as exc:  # noqa: BLE001 - surface any load error to the user
+            tab = DocumentTab(path)
+        except Exception as exc:  # noqa: BLE001 - surface any load error
             QMessageBox.critical(self, "Open failed", f"Could not open PDF:\n{exc}")
             return
+        tab.changed.connect(self._update_status)
         config.set_last_dir(os.path.dirname(path))
-        self.page_index = 0
-        self._signature = None
-        self.setWindowTitle(f"XPC PDF — {os.path.basename(path)}")
-        self.render_current_page()
-
-    def render_current_page(self) -> None:
-        if not self.doc.is_open:
-            return
-        # Resizing/replacing the page drops any unsaved signature overlay.
-        keep_sig = self._signature
-        self.scene.clear()
-        self._page_item = None
-        self._signature = None
-
-        pixmap = self.doc.render_page(self.page_index, self.zoom)
-        self._page_item = self.scene.addPixmap(pixmap)
-        self._page_item.setZValue(0)
-        self.scene.setSceneRect(self._page_item.boundingRect())
-
-        # Re-add the signature so zoom/page redraws don't lose it.
-        if keep_sig is not None:
-            self.scene.addItem(keep_sig)
-            self._signature = keep_sig
+        index = self.tabs.addTab(tab, tab.title)
+        self.tabs.setTabToolTip(index, path)
+        self.tabs.setCurrentIndex(index)
         self._update_status()
 
-    # ----- navigation --------------------------------------------------------
-    def next_page(self) -> None:
-        if self.doc.is_open and self.page_index < self.doc.page_count - 1:
-            self.page_index += 1
-            self._signature = None
-            self.render_current_page()
-
-    def prev_page(self) -> None:
-        if self.doc.is_open and self.page_index > 0:
-            self.page_index -= 1
-            self._signature = None
-            self.render_current_page()
-
-    # ----- zoom --------------------------------------------------------------
-    def zoom_in(self) -> None:
-        self._apply_zoom(self.zoom * ZOOM_STEP)
-
-    def zoom_out(self) -> None:
-        self._apply_zoom(self.zoom / ZOOM_STEP)
-
-    def _apply_zoom(self, value: float) -> None:
-        value = max(ZOOM_MIN, min(ZOOM_MAX, value))
-        if abs(value - self.zoom) < 1e-6:
+    def close_tab(self, index: int) -> None:
+        if index < 0:
             return
-        self.zoom = value
-        self.render_current_page()
-
-    def fit_width(self) -> None:
-        if not self.doc.is_open:
-            return
-        width_points, _ = self.doc.page_size_points(self.page_index)
-        viewport_width = self.view.viewport().width() - 24
-        if width_points > 0 and viewport_width > 0:
-            self._apply_zoom(viewport_width / width_points)
+        widget = self.tabs.widget(index)
+        if isinstance(widget, DocumentTab):
+            widget.close_document()
+        self.tabs.removeTab(index)
+        if widget is not None:
+            widget.deleteLater()
+        self._update_status()
 
     # ----- signature ---------------------------------------------------------
     def set_signature_image(self) -> None:
-        start_dir = os.path.dirname(config.get_signature_path() or "") or os.path.expanduser("~")
+        start_dir = (
+            os.path.dirname(config.get_signature_path() or "")
+            or os.path.expanduser("~")
+        )
         path, _ = QFileDialog.getOpenFileName(
             self, "Choose signature image", start_dir, IMAGE_FILTER
         )
@@ -203,7 +177,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Signature image saved.", 3000)
 
     def add_signature(self) -> None:
-        if not self.doc.is_open:
+        tab = self.current_tab()
+        if tab is None:
             QMessageBox.information(self, "No document", "Open a PDF first.")
             return
         sig_path = config.get_signature_path()
@@ -214,64 +189,39 @@ class MainWindow(QMainWindow):
                 "Use 'Set Signature' to choose your signature image first.",
             )
             return
-        if self._signature is not None:
-            self.scene.removeItem(self._signature)
-            self._signature = None
-        try:
-            item = SignatureItem(sig_path)
-        except ValueError as exc:
-            QMessageBox.warning(self, "Invalid image", str(exc))
-            return
-        # Drop near the centre of the current page.
-        page_rect = self._page_item.boundingRect()
-        item.setPos(
-            page_rect.width() / 2 - 110,
-            page_rect.height() / 2 - 40,
-        )
-        self.scene.addItem(item)
-        item.setSelected(True)
-        self._signature = item
-        self.statusBar().showMessage(
-            "Drag to position, drag the corner to resize, then Sign & Save.", 5000
-        )
+        if tab.add_signature(sig_path):
+            self.statusBar().showMessage(
+                "Drag to position, drag the corner to resize, then Sign & Save.", 5000
+            )
 
     def save_signed(self) -> None:
-        if not self.doc.is_open:
+        tab = self.current_tab()
+        if tab is None:
             return
-        if self._signature is None:
+        if not tab.has_signature:
             QMessageBox.information(
                 self, "No signature", "Add your signature before saving."
             )
             return
-        sig_path = config.get_signature_path()
-        rect = self._signature.content_scene_rect()
-        try:
-            self.doc.stamp_and_save(
-                self.page_index,
-                sig_path,
-                (rect.left(), rect.top(), rect.right(), rect.bottom()),
-                self.zoom,
-            )
-        except Exception as exc:  # noqa: BLE001 - report any save failure
-            QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
-            return
-        self._signature = None
-        self.render_current_page()
-        self.statusBar().showMessage("Signed and saved.", 4000)
+        if tab.save_signed(config.get_signature_path()):
+            self.statusBar().showMessage("Signed and saved.", 4000)
 
     # ----- status / lifecycle ------------------------------------------------
     def _update_status(self) -> None:
-        if self.doc.is_open:
-            self.status_label.setText(
-                f"Page {self.page_index + 1} / {self.doc.page_count}"
-                f"    {int(self.zoom * 100)}%"
-            )
+        tab = self.current_tab()
+        if tab is not None:
+            self.status_label.setText(tab.status_text())
+            self.setWindowTitle(f"XPDF — {tab.title}")
         else:
             self.status_label.setText("No document")
+            self.setWindowTitle("XPDF")
 
     def closeEvent(self, event) -> None:
         config.set_window_geometry(self.saveGeometry())
-        self.doc.close()
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            if isinstance(widget, DocumentTab):
+                widget.close_document()
         super().closeEvent(event)
 
     # ----- drag & drop -------------------------------------------------------
@@ -284,8 +234,8 @@ class MainWindow(QMainWindow):
         event.ignore()
 
     def dropEvent(self, event) -> None:
+        # Open every dropped PDF in its own tab.
         for url in event.mimeData().urls():
             path = url.toLocalFile()
             if path.lower().endswith(".pdf"):
                 self.open_path(path)
-                break
