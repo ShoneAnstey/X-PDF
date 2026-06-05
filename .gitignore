@@ -11,3 +11,6 @@ env.local
 .env
 .env.local
 *.token
+
+# Security gate generated reports (baseline + config are tracked)
+security/reports/

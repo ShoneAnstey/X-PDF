@@ -1,0 +1,37 @@
+# ==============================================================================
+# XPDF — project + security-gate tool config.
+#
+# Tool sections (ruff, mypy, bandit) are consumed by security/pre_commit_hook.py.
+# Install the gate tooling with:
+#   pip install ruff mypy mypy-baseline bandit semgrep pip-audit detect-secrets
+#   (gitleaks: install the binary separately)
+# ==============================================================================
+
+[tool.ruff]
+line-length = 120
+exclude = [".venv", "__pycache__", "build", "dist", "packaging"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "C", "B"]
+# E501: line length handled by formatter
+# B008: function call in argument defaults (common with Qt)
+# C901: function-too-complex
+ignore = ["E501", "B008", "C901"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+explicit_package_bases = true
+exclude = [".venv", "build", "dist", "packaging"]
+
+[tool.bandit]
+# B608: hardcoded SQL — not relevant to this desktop app.
+skips = ["B608"]
+exclude_dirs = [".venv", "build", "dist", "packaging"]
+
+[tool.bandit.assert_used]
+skips = ["*_test.py", "test_*.py"]

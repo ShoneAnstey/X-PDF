@@ -1,0 +1,14 @@
+# pip-audit-accepted.txt
+# Pre-existing dependency vulnerabilities accepted with documented rationale.
+#
+# Format: one VULN_ID per line (first whitespace-delimited token is the ID).
+#         Lines beginning with '#' are comments and ignored by the gate.
+#
+# Layer 4 of pre_commit_hook.py parses pip-audit JSON and subtracts the IDs
+# listed here. A commit is blocked only when an UNACCEPTED vuln remains.
+#
+# To clear an entry: upgrade the package to the fix version, verify pip-audit
+# no longer reports it, then delete the line below.
+#
+# Example:
+# GHSA-xxxx-xxxx-xxxx  pkgname 1.2.3  — no fix available; not reachable in our usage
