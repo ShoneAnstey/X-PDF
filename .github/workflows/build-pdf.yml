@@ -1,0 +1,51 @@
+name: Build binaries
+
+# Builds the portable Windows .exe and the Linux AppImage.
+# Trigger manually from the Actions tab, or on a version tag (v*).
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+      - name: Build .exe
+        run: python -m PyInstaller --noconfirm packaging/xpc_pdf.spec
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPC-PDF-windows
+          path: "dist/XPC PDF.exe"
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system + Python deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 libegl1 libxcb-cursor0
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt
+      - name: Build AppImage
+        run: bash packaging/build_appimage.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPC-PDF-linux
+          path: dist/XPC_PDF-x86_64.AppImage

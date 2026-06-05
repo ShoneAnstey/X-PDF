@@ -1,0 +1,13 @@
+# PyInstaller / AppImage build outputs
+/build/
+/dist/
+/.build_venv/
+*.spec.bak
+__pycache__/
+*.pyc
+
+# Secrets — never commit
+env.local
+.env
+.env.local
+*.token
