@@ -122,6 +122,9 @@ class MainWindow(QMainWindow):
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
+        # Show labels under each button so the new actions are discoverable for
+        # users who don't know the keyboard shortcuts.
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.addToolBar(toolbar)
 
         toolbar.addAction(self.act_open)
@@ -143,6 +146,17 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel("No document")
         self.statusBar().addPermanentWidget(self.status_label)
+
+        # Apply tooltips that include the shortcut hint, e.g. "Find (Ctrl+F)".
+        for action in (
+            self.act_open, self.act_prev, self.act_next,
+            self.act_zoom_out, self.act_zoom_in, self.act_fit,
+            self.act_find, self.act_print,
+            self.act_set_sig, self.act_add_sig, self.act_save, self.act_save_as,
+        ):
+            shortcut = action.shortcut().toString()
+            label = action.text().replace("&&", "&").replace("...", "")
+            action.setToolTip(f"{label} ({shortcut})" if shortcut else label)
 
     def _on_tab(self, fn) -> None:
         tab = self.current_tab()
