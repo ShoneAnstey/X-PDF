@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 import config
 from document_tab import DocumentTab
+from signature_processing import prepare_signature
 
 IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.bmp)"
 PDF_FILTER = "PDF files (*.pdf)"
@@ -175,8 +176,16 @@ class MainWindow(QMainWindow):
         if QPixmap(path).isNull():
             QMessageBox.warning(self, "Invalid image", "That file isn't a readable image.")
             return
-        config.set_signature_path(path)
-        self.statusBar().showMessage("Signature image saved.", 3000)
+        try:
+            prepared = os.path.join(config.cache_dir(), "signature.png")
+            prepare_signature(path, prepared)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Couldn't prepare signature", str(exc))
+            return
+        config.set_signature_path(prepared)
+        self.statusBar().showMessage(
+            "Signature ready — background removed automatically.", 4000
+        )
 
     def add_signature(self) -> None:
         tab = self.current_tab()

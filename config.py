@@ -7,7 +7,9 @@ geometry. QSettings writes to the registry on Windows and to an INI/conf file un
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings
+import os
+
+from PySide6.QtCore import QSettings, QStandardPaths
 
 ORG = "XPC"
 APP = "XPDF"
@@ -46,3 +48,13 @@ def get_window_geometry():
 
 def set_window_geometry(geometry) -> None:
     _settings().setValue(_WINDOW_GEOMETRY, geometry)
+
+
+def cache_dir() -> str:
+    """Return a writable per-user cache directory for XPDF, creating it if needed."""
+    base = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
+    if not base:
+        base = os.path.join(os.path.expanduser("~"), ".cache", APP)
+    os.makedirs(base, exist_ok=True)
+    return base
+

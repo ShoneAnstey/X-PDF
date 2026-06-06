@@ -1,3 +1,4 @@
+config.py:0: error: "type[QStandardPaths]" has no attribute "CacheLocation"  [attr-defined]
 pdf_document.py:0: error: "type[QImage]" has no attribute "Format_RGB888"  [attr-defined]
 signature_item.py:0: error: "type[QGraphicsItem]" has no attribute "ItemIsMovable"  [attr-defined]
 signature_item.py:0: error: "type[QGraphicsItem]" has no attribute "ItemIsSelectable"  [attr-defined]
