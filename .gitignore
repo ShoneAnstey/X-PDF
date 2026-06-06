@@ -6,6 +6,9 @@
 __pycache__/
 *.pyc
 
+# Generated at build time by packaging/stamp_build.py
+build_info.json
+
 # Secrets — never commit
 env.local
 .env

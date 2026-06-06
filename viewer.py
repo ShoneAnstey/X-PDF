@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 import config
 from document_tab import DocumentTab
 from signature_processing import prepare_signature
+from version import build_metadata, version_string
 
 IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.bmp)"
 PDF_FILTER = "PDF files (*.pdf)"
@@ -30,7 +31,7 @@ PDF_FILTER = "PDF files (*.pdf)"
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("XPDF")
+        self.setWindowTitle(f"XPDF {version_string()}")
         self.resize(1000, 800)
         self.setAcceptDrops(True)
 
@@ -44,6 +45,7 @@ class MainWindow(QMainWindow):
 
         self._build_actions()
         self._build_toolbar()
+        self._build_menus()
         self._update_status()
 
         geometry = config.get_window_geometry()
@@ -96,6 +98,13 @@ class MainWindow(QMainWindow):
         self.act_save = QAction("Sign && Save", self)
         self.act_save.setShortcut(QKeySequence.Save)
         self.act_save.triggered.connect(self.save_signed)
+
+        self.act_about = QAction("About XPDF", self)
+        self.act_about.triggered.connect(self.show_about)
+
+    def _build_menus(self) -> None:
+        help_menu = self.menuBar().addMenu("Help")
+        help_menu.addAction(self.act_about)
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Main", self)
@@ -218,14 +227,29 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Signed and saved.", 4000)
 
     # ----- status / lifecycle ------------------------------------------------
+    def show_about(self) -> None:
+        meta = build_metadata()
+        commit = meta["commit"] or "development build"
+        lines = [
+            f"<b>XPDF {version_string()}</b>",
+            "A simple PDF reader with paper-photo signature stamping.",
+            "",
+            f"Commit: {commit}",
+        ]
+        if meta["date"]:
+            lines.append(f"Built: {meta['date']}")
+        lines.append("")
+        lines.append("Released into the public domain (The Unlicense).")
+        QMessageBox.about(self, "About XPDF", "<br>".join(lines))
+
     def _update_status(self) -> None:
         tab = self.current_tab()
         if tab is not None:
             self.status_label.setText(tab.status_text())
-            self.setWindowTitle(f"XPDF — {tab.title}")
+            self.setWindowTitle(f"XPDF {version_string()} — {tab.title}")
         else:
             self.status_label.setText("No document")
-            self.setWindowTitle("XPDF")
+            self.setWindowTitle(f"XPDF {version_string()}")
 
     def closeEvent(self, event) -> None:
         config.set_window_geometry(self.saveGeometry())

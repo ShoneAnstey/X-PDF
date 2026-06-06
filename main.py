@@ -11,6 +11,7 @@ import sys
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from version import __version__, version_line
 from viewer import MainWindow
 
 
@@ -29,9 +30,14 @@ def _icon_path() -> str:
 
 
 def main() -> int:
+    if "--version" in sys.argv[1:] or "-V" in sys.argv[1:]:
+        print(version_line())
+        return 0
+
     app = QApplication(sys.argv)
     app.setApplicationName("XPDF")
     app.setApplicationDisplayName("XPDF")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("XPC")
 
     icon = _icon_path()

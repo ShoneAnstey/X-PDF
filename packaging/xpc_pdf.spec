@@ -19,11 +19,18 @@ icon = str(spec_dir / "icon.ico") if is_windows else None
 
 block_cipher = None
 
+# build_info.json is written by packaging/stamp_build.py during CI; bundle it when
+# present so the app can report its commit/tag/build date. Absent in dev builds.
+datas = [(str(spec_dir / "icon.png"), ".")]
+build_info = pdf_dir / "build_info.json"
+if build_info.exists():
+    datas.append((str(build_info), "."))
+
 a = Analysis(
     [str(pdf_dir / "main.py")],
     pathex=[str(pdf_dir)],
     binaries=[],
-    datas=[(str(spec_dir / "icon.png"), ".")],
+    datas=datas,
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],

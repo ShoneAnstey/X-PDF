@@ -8,7 +8,9 @@
 ; Output: dist\XPDF-Setup.exe
 
 #define MyAppName "XPDF"
-#define MyAppVersion "0.1.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.1.0"
+#endif
 #define MyAppPublisher "XPC"
 #define MyAppExeName "XPDF.exe"
 
