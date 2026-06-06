@@ -6,8 +6,11 @@ to get away from Adobe for everyday reading and the occasional document signing.
 
 - Read PDFs (open, page through, zoom, fit-to-width)
 - **Multiple tabs** — open many PDFs at once; drag tabs to reorder
-- Apply a transparent PNG signature: click **Add Signature**, drag to position,
+- Apply your signature: click **Add Signature**, drag to position,
   drag the bottom-right corner to resize, then **Sign & Save**
+- **No transparent PNG needed** — sign a blank sheet of paper, photograph it, and
+  open the photo; XPDF removes the paper background automatically (keeps the ink,
+  even blue pen, and auto-crops)
 - Remembers your signature image so you only pick it once
 - Saving overwrites the original file (atomic temp-file replace)
 - Drag-and-drop one or more PDFs onto the window to open them in tabs
@@ -24,7 +27,9 @@ python -m venv .venv
 ```
 
 First use:
-1. **Set Signature** → pick your transparent PNG (remembered after this).
+1. **Set Signature** → pick your signature image (remembered after this).
+   No signature file? Sign a blank sheet of paper, take a photo, and pick that —
+   the paper background is removed for you.
 2. **Open** a PDF (or drag one onto the window).
 3. **Add Signature**, position/resize it, then **Sign & Save**.
 
@@ -75,6 +80,7 @@ The unsigned binaries may trigger a SmartScreen warning on first launch
 - `document_tab.py` — one open PDF per tab: render, navigate, zoom, sign
 - `pdf_document.py` — PyMuPDF wrapper: render pages, stamp + overwrite-save
 - `signature_item.py` — draggable / resizable signature overlay
+- `signature_processing.py` — turns a paper photo into a transparent-background signature
 - `config.py` — remembers signature path, last folder, window geometry
 - `packaging/` — PyInstaller spec, AppImage + Windows build scripts, Inno Setup
   installer script, icons
