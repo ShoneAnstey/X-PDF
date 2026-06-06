@@ -8,6 +8,7 @@ here when stamping.
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 
 import fitz  # PyMuPDF
@@ -105,24 +106,33 @@ class PdfDocument:
         fd, tmp_path = tempfile.mkstemp(suffix=".pdf", dir=directory)
         os.close(fd)
 
-        # Stamp into a working copy; the open document stays untouched until the
-        # replace succeeds, so a retry after a failure can't double-stamp.
-        work = fitz.open()
+        # Stamp a byte-for-byte copy of the original and save incrementally, so all
+        # document-level structure (metadata, bookmarks/outline, named destinations,
+        # attachments, form fields) is preserved -- rebuilding a new PDF from
+        # inserted pages would silently drop all of that. The open document stays
+        # untouched until the replace succeeds, so a retry after a failure can't
+        # double-stamp.
         try:
-            work.insert_pdf(self._doc)
-            work[page_index].insert_image(
-                pdf_rect,
-                filename=signature_path,
-                keep_proportion=True,
-                overlay=True,
-            )
-            work.save(tmp_path, garbage=4, deflate=True)
+            shutil.copyfile(target, tmp_path)
+            work = fitz.open(tmp_path)
+            try:
+                work[page_index].insert_image(
+                    pdf_rect,
+                    filename=signature_path,
+                    keep_proportion=True,
+                    overlay=True,
+                )
+                work.save(
+                    tmp_path,
+                    incremental=True,
+                    encryption=fitz.PDF_ENCRYPT_KEEP,
+                )
+            finally:
+                work.close()
         except Exception:
-            work.close()
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
             raise
-        work.close()
 
         # Release the original handle, then atomically replace and reopen.
         self._doc.close()

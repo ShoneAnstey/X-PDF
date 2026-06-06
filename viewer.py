@@ -252,6 +252,12 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"XPDF {version_string()}")
 
     def closeEvent(self, event) -> None:
+        # Warn before discarding any placed-but-unsaved signatures.
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            if isinstance(widget, DocumentTab) and not widget._ok_to_discard_signature():
+                event.ignore()
+                return
         config.set_window_geometry(self.saveGeometry())
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
