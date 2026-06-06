@@ -12,8 +12,8 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install dependencies
@@ -28,12 +28,12 @@ jobs:
       - name: Build installer (Inno Setup)
         run: iscc /DMyAppVersion=${{ steps.stamp.outputs.version }} packaging\xpdf_installer.iss
       - name: Upload portable .exe
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: XPDF-windows-portable
           path: "dist/XPDF.exe"
       - name: Upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: XPDF-windows-installer
           path: "dist/XPDF-Setup.exe"
@@ -41,8 +41,8 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install system + Python deps
@@ -57,7 +57,7 @@ jobs:
       - name: Build AppImage
         run: bash packaging/build_appimage.sh
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: XPDF-linux
           path: dist/XPDF-x86_64.AppImage
