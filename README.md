@@ -87,5 +87,6 @@ The unsigned binaries may trigger a SmartScreen warning on first launch
 
 ## License
 
-[MIT](LICENSE) © 2026 Shone Anstey
+Released into the **public domain** under [The Unlicense](LICENSE) — free for
+anyone to use, modify, and distribute, forever, with no restrictions.
 
