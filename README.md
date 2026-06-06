@@ -84,3 +84,8 @@ The unsigned binaries may trigger a SmartScreen warning on first launch
 - `config.py` — remembers signature path, last folder, window geometry
 - `packaging/` — PyInstaller spec, AppImage + Windows build scripts, Inno Setup
   installer script, icons
+
+## License
+
+[MIT](LICENSE) © 2026 Shone Anstey
+
