@@ -10,6 +10,7 @@ import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QPixmap
+from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
@@ -99,6 +100,18 @@ class MainWindow(QMainWindow):
         self.act_save.setShortcut(QKeySequence.Save)
         self.act_save.triggered.connect(self.save_signed)
 
+        self.act_save_as = QAction("Save As...", self)
+        self.act_save_as.setShortcut(QKeySequence(Qt.CTRL | Qt.SHIFT | Qt.Key_S))
+        self.act_save_as.triggered.connect(self.save_as_dialog)
+
+        self.act_find = QAction("Find", self)
+        self.act_find.setShortcut(QKeySequence.Find)
+        self.act_find.triggered.connect(self.show_find)
+
+        self.act_print = QAction("Print", self)
+        self.act_print.setShortcut(QKeySequence.Print)
+        self.act_print.triggered.connect(self.print_document)
+
         self.act_about = QAction("About XPDF", self)
         self.act_about.triggered.connect(self.show_about)
 
@@ -120,9 +133,13 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.act_zoom_in)
         toolbar.addAction(self.act_fit)
         toolbar.addSeparator()
+        toolbar.addAction(self.act_find)
+        toolbar.addAction(self.act_print)
+        toolbar.addSeparator()
         toolbar.addAction(self.act_set_sig)
         toolbar.addAction(self.act_add_sig)
         toolbar.addAction(self.act_save)
+        toolbar.addAction(self.act_save_as)
 
         self.status_label = QLabel("No document")
         self.statusBar().addPermanentWidget(self.status_label)
@@ -225,6 +242,43 @@ class MainWindow(QMainWindow):
             return
         if tab.save_signed(config.get_signature_path()):
             self.statusBar().showMessage("Signed and saved.", 4000)
+
+    def save_as_dialog(self) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            QMessageBox.information(self, "No document", "Open a PDF first.")
+            return
+        start_dir = config.get_last_dir() or os.path.expanduser("~")
+        suggested = os.path.join(start_dir, tab.title)
+        target, _ = QFileDialog.getSaveFileName(
+            self, "Save PDF As", suggested, PDF_FILTER
+        )
+        if not target:
+            return
+        if not target.lower().endswith(".pdf"):
+            target += ".pdf"
+        if tab.save_as(target, config.get_signature_path()):
+            config.set_last_dir(os.path.dirname(target))
+            self.statusBar().showMessage(
+                f"Saved {os.path.basename(target)}", 4000
+            )
+
+    def show_find(self) -> None:
+        tab = self.current_tab()
+        if tab is not None:
+            tab.show_find_bar()
+
+    def print_document(self) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            QMessageBox.information(self, "No document", "Open a PDF first.")
+            return
+        printer = QPrinter(QPrinter.HighResolution)
+        dialog = QPrintDialog(printer, self)
+        if dialog.exec() != QPrintDialog.Accepted:
+            return
+        tab.print_to(printer)
+        self.statusBar().showMessage("Sent to printer.", 4000)
 
     # ----- status / lifecycle ------------------------------------------------
     def show_about(self) -> None:

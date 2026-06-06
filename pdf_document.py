@@ -144,3 +144,69 @@ class PdfDocument:
                 os.remove(tmp_path)
             self._doc = fitz.open(target)
             self.path = target
+
+    def stamp_to(
+        self,
+        target_path: str,
+        page_index: int,
+        signature_path: str,
+        rect_pixels: tuple[float, float, float, float],
+        zoom: float,
+    ) -> None:
+        """Save a signed copy to ``target_path`` without touching the open file.
+
+        When ``target_path`` is the currently-open document, delegate to
+        :meth:`stamp_and_save` so the in-memory document is replaced and reopened
+        atomically; otherwise copy the source to the target and stamp there.
+        """
+        if self._doc is None or self.path is None:
+            raise RuntimeError("No document open")
+        if os.path.abspath(target_path) == os.path.abspath(self.path):
+            self.stamp_and_save(page_index, signature_path, rect_pixels, zoom)
+            return
+
+        x0, y0, x1, y1 = rect_pixels
+        pdf_rect = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom)
+        shutil.copyfile(self.path, target_path)
+        work = fitz.open(target_path)
+        try:
+            work[page_index].insert_image(
+                pdf_rect,
+                filename=signature_path,
+                keep_proportion=True,
+                overlay=True,
+            )
+            work.save(target_path, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
+        finally:
+            work.close()
+
+    def copy_to(self, target_path: str) -> None:
+        """Copy the currently-open file to ``target_path`` (no-op if same path)."""
+        if self.path is None:
+            raise RuntimeError("No document open")
+        if os.path.abspath(target_path) == os.path.abspath(self.path):
+            return
+        shutil.copyfile(self.path, target_path)
+
+    # ----- search ------------------------------------------------------------
+    def search_page(self, index: int, text: str) -> list[fitz.Rect]:
+        """Return rectangles (PDF points) where ``text`` matches on page ``index``."""
+        if self._doc is None:
+            raise RuntimeError("No document open")
+        if not text:
+            return []
+        return self._doc[index].search_for(text)
+
+    # ----- printing ----------------------------------------------------------
+    def render_page_for_print(self, index: int, dpi: int) -> QImage:
+        """Render page ``index`` as a QImage at the given DPI for sending to a printer."""
+        if self._doc is None:
+            raise RuntimeError("No document open")
+        page = self._doc[index]
+        scale = dpi / 72.0
+        matrix = fitz.Matrix(scale, scale)
+        pix = page.get_pixmap(matrix=matrix, alpha=False)
+        image = QImage(
+            pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
+        )
+        return image.copy()

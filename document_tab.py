@@ -5,13 +5,17 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QEvent, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsView,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QMessageBox,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -46,6 +50,13 @@ class DocumentTab(QWidget):
         self._page_pix: dict[int, QGraphicsPixmapItem] = {}  # rendered pages
         self._signature: SignatureItem | None = None
 
+        # Search state: matches are kept in PDF-point coords per page so they
+        # survive zoom; overlays are rebuilt from them on every re-render.
+        self._matches: list[tuple[int, tuple[float, float, float, float]]] = []
+        self._match_overlays: list[QGraphicsRectItem] = []
+        self._match_index: int = -1
+        self._search_text: str = ""
+
         self.scene = QGraphicsScene(self)
         self.view = QGraphicsView(self.scene)
         self.view.setBackgroundBrush(Qt.darkGray)
@@ -66,10 +77,143 @@ class DocumentTab(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._build_find_bar())
         layout.addWidget(self.view)
 
         self.doc.load(path)
         self.render_all_pages()
+
+    # ----- find bar ----------------------------------------------------------
+    def _build_find_bar(self) -> QWidget:
+        self.find_bar = QWidget(self)
+        self.find_input = QLineEdit(self.find_bar)
+        self.find_input.setPlaceholderText("Find in document...")
+        self.find_input.returnPressed.connect(self._on_find_enter)
+
+        btn_prev = QPushButton("\u25c0", self.find_bar)
+        btn_next = QPushButton("\u25b6", self.find_bar)
+        btn_close = QPushButton("\u2715", self.find_bar)
+        for btn in (btn_prev, btn_next, btn_close):
+            btn.setMaximumWidth(32)
+        btn_prev.clicked.connect(self.find_prev)
+        btn_next.clicked.connect(self.find_next)
+        btn_close.clicked.connect(self.hide_find_bar)
+
+        self.find_status = QLabel("", self.find_bar)
+        self.find_status.setMinimumWidth(80)
+
+        row = QHBoxLayout(self.find_bar)
+        row.setContentsMargins(6, 2, 6, 2)
+        row.addWidget(self.find_input, 1)
+        row.addWidget(btn_prev)
+        row.addWidget(btn_next)
+        row.addWidget(self.find_status)
+        row.addWidget(btn_close)
+
+        # Esc inside the find input closes the bar.
+        esc = QShortcut(QKeySequence(Qt.Key_Escape), self.find_input)
+        esc.activated.connect(self.hide_find_bar)
+
+        self.find_bar.hide()
+        return self.find_bar
+
+    def show_find_bar(self) -> None:
+        self.find_bar.show()
+        self.find_input.setFocus()
+        self.find_input.selectAll()
+
+    def hide_find_bar(self) -> None:
+        self._clear_matches()
+        self._search_text = ""
+        self.find_status.clear()
+        self.find_bar.hide()
+        self.view.setFocus()
+
+    def _on_find_enter(self) -> None:
+        text = self.find_input.text().strip()
+        if text != self._search_text:
+            self._run_search(text)
+        else:
+            self.find_next()
+
+    def find_next(self) -> None:
+        if not self._matches:
+            return
+        self._set_match_index((self._match_index + 1) % len(self._matches))
+
+    def find_prev(self) -> None:
+        if not self._matches:
+            return
+        self._set_match_index((self._match_index - 1) % len(self._matches))
+
+    def _run_search(self, text: str) -> None:
+        self._clear_matches()
+        self._search_text = text
+        if not text or not self.doc.is_open:
+            self.find_status.clear()
+            return
+        for i in range(self.doc.page_count):
+            for r in self.doc.search_page(i, text):
+                self._matches.append((i, (r.x0, r.y0, r.x1, r.y1)))
+        if not self._matches:
+            self.find_status.setText("No matches")
+            return
+        self._build_match_overlays()
+        self._set_match_index(0)
+
+    def _clear_matches(self) -> None:
+        for item in self._match_overlays:
+            self.scene.removeItem(item)
+        self._match_overlays = []
+        self._matches = []
+        self._match_index = -1
+
+    def _build_match_overlays(self) -> None:
+        """Rebuild highlight rectangles from ``self._matches`` at current zoom."""
+        for item in self._match_overlays:
+            self.scene.removeItem(item)
+        self._match_overlays = []
+        if not self._matches or not self._page_pos:
+            return
+        pen = QPen(QColor(0, 0, 0, 0))
+        inactive = QBrush(QColor(255, 235, 59, 110))  # soft yellow
+        for page_idx, (x0, y0, x1, y1) in self._matches:
+            if page_idx >= len(self._page_pos):
+                continue
+            px, py = self._page_pos[page_idx]
+            rect = QRectF(
+                px + x0 * self.zoom,
+                py + y0 * self.zoom,
+                (x1 - x0) * self.zoom,
+                (y1 - y0) * self.zoom,
+            )
+            item = self.scene.addRect(rect, pen, inactive)
+            item.setZValue(50)
+            self._match_overlays.append(item)
+        if 0 <= self._match_index < len(self._match_overlays):
+            self._highlight_active()
+
+    def _highlight_active(self) -> None:
+        inactive = QBrush(QColor(255, 235, 59, 110))
+        active = QBrush(QColor(255, 140, 0, 200))  # stronger orange
+        for i, item in enumerate(self._match_overlays):
+            item.setBrush(active if i == self._match_index else inactive)
+
+    def _set_match_index(self, idx: int) -> None:
+        if not (0 <= idx < len(self._matches)):
+            return
+        self._match_index = idx
+        self._highlight_active()
+        page_idx, (x0, y0, x1, y1) = self._matches[idx]
+        px, py = self._page_pos[page_idx]
+        rect = QRectF(
+            px + x0 * self.zoom,
+            py + y0 * self.zoom,
+            (x1 - x0) * self.zoom,
+            (y1 - y0) * self.zoom,
+        )
+        self.view.ensureVisible(rect, 40, 40)
+        self.find_status.setText(f"{idx + 1} / {len(self._matches)}")
 
     # ----- Ctrl+wheel zoom ---------------------------------------------------
     def eventFilter(self, obj, event) -> bool:
@@ -119,6 +263,9 @@ class DocumentTab(QWidget):
         self._page_pos = []
         self._page_bgs = []
         self._page_pix = {}
+        # scene.clear() also deleted any search-match overlay C++ objects; the
+        # match data in self._matches is preserved and overlays are rebuilt below.
+        self._match_overlays = []
         self._signature = None
 
         self._dpr = self.view.devicePixelRatioF() or 1.0
@@ -152,6 +299,7 @@ class DocumentTab(QWidget):
             v_bar.setValue(int(v_ratio * v_bar.maximum()))
             h_bar.setValue(int(h_ratio * h_bar.maximum()))
 
+        self._build_match_overlays()
         self._render_visible()
         self._update_current_page()
         self.changed.emit()
@@ -326,6 +474,76 @@ class DocumentTab(QWidget):
         self._signature = None
         self.render_all_pages(preserve_scroll=True)
         return True
+
+    def save_as(self, target_path: str, sig_path: str | None) -> bool:
+        """Save a copy to ``target_path``; stamps the signature if one is placed.
+
+        Leaves the open document untouched on disk, so the user can keep working
+        on the original.
+        """
+        if not self.doc.is_open:
+            return False
+        if self._signature is None:
+            try:
+                self.doc.copy_to(target_path)
+                return True
+            except OSError as exc:
+                QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
+                return False
+        if not sig_path:
+            QMessageBox.warning(
+                self,
+                "No signature image",
+                "Configure a signature image first via Set Signature.",
+            )
+            return False
+        sig_rect = self._signature.content_scene_rect()
+        page_index = self._page_for_rect(sig_rect)
+        if page_index < 0:
+            QMessageBox.warning(
+                self,
+                "Signature off the page",
+                "The signature isn't on a page. Drag it onto the page before saving.",
+            )
+            return False
+        page_rect = self._page_rect_in_scene(page_index)
+        local = (
+            sig_rect.left() - page_rect.left(),
+            sig_rect.top() - page_rect.top(),
+            sig_rect.right() - page_rect.left(),
+            sig_rect.bottom() - page_rect.top(),
+        )
+        try:
+            self.doc.stamp_to(target_path, page_index, sig_path, local, self.zoom)
+        except Exception as exc:  # noqa: BLE001 - report any save failure
+            QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
+            return False
+        return True
+
+    def print_to(self, printer) -> None:
+        """Render every page onto ``printer`` (a configured QPrinter)."""
+        if not self.doc.is_open:
+            return
+        painter = QPainter(printer)
+        try:
+            dpi = printer.resolution()
+            for i in range(self.doc.page_count):
+                if i > 0:
+                    printer.newPage()
+                img = self.doc.render_page_for_print(i, dpi)
+                target = painter.viewport()
+                iw, ih = img.width(), img.height()
+                tw, th = target.width(), target.height()
+                if not (iw and ih and tw and th):
+                    continue
+                scale = min(tw / iw, th / ih)
+                w = iw * scale
+                h = ih * scale
+                x = (tw - w) / 2.0
+                y = (th - h) / 2.0
+                painter.drawImage(QRectF(x, y, w, h), img)
+        finally:
+            painter.end()
 
     def _page_for_rect(self, rect: QRectF) -> int:
         """Index of the page the rect overlaps most (by area), or -1 if off-page."""
