@@ -17,3 +17,6 @@ env.local
 
 # Security gate generated reports (baseline + config are tracked)
 security/reports/
+
+# Private internal documentation — not for the public repo
+/docs/

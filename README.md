@@ -1,19 +1,38 @@
 # XPDF
 
-A simple, lightweight tabbed PDF reader for Windows and Linux with one feature
-beyond reading: stamping your saved signature image onto a page and saving. Built
-to get away from Adobe for everyday reading and the occasional document signing.
+A simple, lightweight tabbed PDF reader for Windows and Linux that does more than
+read: sign, fill, search, print, and reorganize pages — without the bloat,
+subscriptions, or cloud uploads of commercial PDF software. Built to get away from
+paid PDF suites for everyday reading, signing, and light editing.
 
-- Read PDFs (open, page through, zoom, fit-to-width)
+### Read & navigate
+- Open, page through, zoom, and fit-to-width
 - **Multiple tabs** — open many PDFs at once; drag tabs to reorder
-- Apply your signature: click **Add Signature**, drag to position,
-  drag the bottom-right corner to resize, then **Sign & Save**
+- **Continuous vertical scrolling** with crisp HiDPI rendering
+- **Sidebar** with page **thumbnails** and the document **outline / bookmarks** —
+  click to jump (toggle with `F9`)
+- **Find** text in a document (`Ctrl+F`) with match highlighting
+- **Print** (`Ctrl+P`)
+- **Recent files** menu, and drag-and-drop one or more PDFs onto the window
+- **Dark mode** for the app interface (View → Dark Mode)
+
+### Sign
+- Apply your signature: **Signature ▾ → Place signature on page**, drag to
+  position, drag the corner to resize, **rotate** with `R` / `Shift+R`, then save
 - **No transparent PNG needed** — sign a blank sheet of paper, photograph it, and
   open the photo; XPDF removes the paper background automatically (keeps the ink,
   even blue pen, and auto-crops)
 - Remembers your signature image so you only pick it once
-- Saving overwrites the original file (atomic temp-file replace)
-- Drag-and-drop one or more PDFs onto the window to open them in tabs
+
+### Fill & edit
+- **Typewriter / text tool** (`Ctrl+T`) — type directly onto a page (fill forms,
+  add notes), then save
+- **Page surgery** — right-click any page to **extract it to a new PDF** or
+  **delete it** from the document
+
+### Save
+- Saving overwrites the original file (atomic temp-file replace), or use
+  **Save As** (`Ctrl+Shift+S`) to write a copy
 
 > This applies a **visual image** of your signature. It is not a cryptographic /
 > digital signature.
@@ -27,14 +46,16 @@ python -m venv .venv
 ```
 
 First use:
-1. **Set Signature** → pick your signature image (remembered after this).
-   No signature file? Sign a blank sheet of paper, take a photo, and pick that —
-   the paper background is removed for you.
+1. **Signature ▾ → Signature setup...** → pick your signature image (remembered
+   after this). No signature file? Sign a blank sheet of paper, take a photo, and
+   pick that — the paper background is removed for you.
 2. **Open** a PDF (or drag one onto the window).
-3. **Add Signature**, position/resize it, then **Sign & Save**.
+3. **Signature ▾ → Place signature on page**, position/resize/rotate it, then save.
 
 ### Shortcuts
-- Open: `Ctrl+O`  •  Close tab: `Ctrl+W`  •  Sign & Save: `Ctrl+S`
+- Open: `Ctrl+O`  •  Close tab: `Ctrl+W`  •  Save: `Ctrl+S`  •  Save As: `Ctrl+Shift+S`
+- Find: `Ctrl+F`  •  Print: `Ctrl+P`  •  Add text: `Ctrl+T`  •  Toggle sidebar: `F9`
+- Rotate signature: `R` / `Shift+R`
 - Next / Previous page: `PageDown` / `PageUp`
 - Zoom in / out: `Ctrl++` / `Ctrl+-`, or **Ctrl + mouse wheel**
 
@@ -76,12 +97,16 @@ The unsigned binaries may trigger a SmartScreen warning on first launch
 
 ## Files
 - `main.py` — entry point, app icon
-- `viewer.py` — main window: tab host, toolbar, navigation, zoom, signature actions
-- `document_tab.py` — one open PDF per tab: render, navigate, zoom, sign
-- `pdf_document.py` — PyMuPDF wrapper: render pages, stamp + overwrite-save
-- `signature_item.py` — draggable / resizable signature overlay
+- `viewer.py` — main window: tab host, toolbar, menus, sidebar, dark mode, navigation
+- `document_tab.py` — one open PDF per tab: render, navigate, zoom, sign, text, find, page surgery
+- `pdf_document.py` — PyMuPDF wrapper: render pages, thumbnails, outline, stamp/save, extract/delete pages
+- `sidebar.py` — page thumbnails + outline navigation panel
+- `signature_item.py` — draggable / resizable / rotatable signature overlay
+- `text_item.py` — draggable typewriter text overlay
 - `signature_processing.py` — turns a paper photo into a transparent-background signature
-- `config.py` — remembers signature path, last folder, window geometry
+- `config.py` — remembers signature path, last folder, recent files, window geometry, UI prefs
+- `version.py` — version string + CI build provenance
+- `security/` — self-contained pre-commit security gate
 - `packaging/` — PyInstaller spec, AppImage + Windows build scripts, Inno Setup
   installer script, icons
 
