@@ -20,8 +20,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pdf_document import PdfDocument
+from pdf_document import PdfDocument, PdfAnnotation
 from signature_item import SignatureItem
+from text_item import TextItem
 
 ZOOM_MIN = 0.25
 ZOOM_MAX = 5.0
@@ -48,7 +49,9 @@ class DocumentTab(QWidget):
         self._page_pos: list[tuple[float, float]] = []  # scene top-left per page
         self._page_bgs: list[QGraphicsRectItem] = []  # white page backgrounds
         self._page_pix: dict[int, QGraphicsPixmapItem] = {}  # rendered pages
+
         self._signature: SignatureItem | None = None
+        self._texts: list[TextItem] = []
 
         # Search state: matches are kept in PDF-point coords per page so they
         # survive zoom; overlays are rebuilt from them on every re-render.
@@ -253,11 +256,15 @@ class DocumentTab(QWidget):
         v_ratio = (v_bar.value() / v_bar.maximum()) if v_bar.maximum() else 0.0
         h_ratio = (h_bar.value() / h_bar.maximum()) if h_bar.maximum() else 0.0
 
-        # Detach the signature before clearing so Qt doesn't delete the C++ object
-        # out from under us; we re-add the same item afterwards.
+        # Detach the signature and texts before clearing so Qt doesn't delete the C++ objects
+        # out from under us; we re-add the same items afterwards.
         keep_sig = self._signature
         if keep_sig is not None:
             self.scene.removeItem(keep_sig)
+        keep_texts = self._texts
+        for txt in keep_texts:
+            self.scene.removeItem(txt)
+
         self.scene.clear()
         self._page_sizes = []
         self._page_pos = []
@@ -267,6 +274,7 @@ class DocumentTab(QWidget):
         # match data in self._matches is preserved and overlays are rebuilt below.
         self._match_overlays = []
         self._signature = None
+        self._texts = []
 
         self._dpr = self.view.devicePixelRatioF() or 1.0
         sizes = [
@@ -294,6 +302,10 @@ class DocumentTab(QWidget):
         if keep_sig is not None:
             self.scene.addItem(keep_sig)
             self._signature = keep_sig
+
+        for txt in keep_texts:
+            self.scene.addItem(txt)
+            self._texts.append(txt)
 
         if preserve_scroll:
             v_bar.setValue(int(v_ratio * v_bar.maximum()))
@@ -376,14 +388,14 @@ class DocumentTab(QWidget):
             self.view.verticalScrollBar().setValue(int(top))
 
     # ----- navigation --------------------------------------------------------
-    def _ok_to_discard_signature(self) -> bool:
-        """Ask before throwing away a placed-but-unsaved signature."""
-        if self._signature is None:
+    def _ok_to_discard_annotations(self) -> bool:
+        """Ask before throwing away any placed-but-unsaved annotations."""
+        if self._signature is None and not self._texts:
             return True
-        reply = QMessageBox.question(
+        reply = QMessageBox.warning(
             self,
-            "Unsaved signature",
-            "You placed a signature but haven't saved it yet. Discard it?",
+            "Unsaved changes",
+            "You placed a signature or text but haven't saved it yet. Discard them?",
             QMessageBox.Discard | QMessageBox.Cancel,
         )
         return reply == QMessageBox.Discard
@@ -442,6 +454,26 @@ class DocumentTab(QWidget):
         self.view.ensureVisible(item.content_scene_rect(), 20, 20)
         return True
 
+    def add_text(self) -> bool:
+        """Drop a new editable text item in the centre of the current page."""
+        if not self._page_sizes:
+            return False
+
+        item = TextItem()
+        page_rect = self._page_rect_in_scene(self._current_page)
+        item.setPos(
+            page_rect.center().x() - item.boundingRect().width() / 2,
+            page_rect.center().y() - item.boundingRect().height() / 2,
+        )
+        self.scene.addItem(item)
+        self._texts.append(item)
+
+        # Select and focus so typing immediately goes into the box
+        item.setSelected(True)
+        item.setFocus()
+        self.view.ensureVisible(item.boundingRect(), 20, 20)
+        return True
+
     def rotate_signature(self, delta_deg: int) -> bool:
         """Rotate the placed signature by 90/180/270 degrees. No-op if none placed."""
         if self._signature is None:
@@ -452,83 +484,115 @@ class DocumentTab(QWidget):
         return True
 
     @property
-    def has_signature(self) -> bool:
-        return self._signature is not None
+    def has_annotations(self) -> bool:
+        return self._signature is not None or bool(self._texts)
+
+    def _collect_annotations(self, sig_path: str | None) -> list[PdfAnnotation] | None:
+        """Gather all signatures and texts. Returns None if validation fails."""
+        annotations = []
+
+        # 1. Signature
+        if self._signature is not None:
+            if not sig_path:
+                QMessageBox.warning(
+                    self,
+                    "No signature image",
+                    "Configure a signature image first via Set Signature.",
+                )
+                return None
+            sig_rect = self._signature.content_scene_rect()
+            page_index = self._page_for_rect(sig_rect)
+            if page_index < 0:
+                QMessageBox.warning(
+                    self, "Signature off the page",
+                    "The signature isn't on a page. Drag it onto the page before saving.",
+                )
+                return None
+            page_rect = self._page_rect_in_scene(page_index)
+            local = (
+                sig_rect.left() - page_rect.left(),
+                sig_rect.top() - page_rect.top(),
+                sig_rect.right() - page_rect.left(),
+                sig_rect.bottom() - page_rect.top(),
+            )
+            annotations.append(PdfAnnotation(
+                page_index=page_index,
+                rect_pixels=local,
+                type="image",
+                image_path=sig_path,
+                rotation=self._signature.rotation_degrees,
+            ))
+
+        # 2. Text items
+        for txt in self._texts:
+            text_str = txt.toPlainText().strip()
+            if not text_str:
+                continue  # ignore empty items
+            txt_rect = txt.sceneBoundingRect()
+            page_index = self._page_for_rect(txt_rect)
+            if page_index < 0:
+                QMessageBox.warning(
+                    self, "Text off the page",
+                    f"The text '{text_str[:15]}...' isn't on a page. Drag it onto a page.",
+                )
+                return None
+            page_rect = self._page_rect_in_scene(page_index)
+            local = (
+                txt_rect.left() - page_rect.left(),
+                txt_rect.top() - page_rect.top(),
+                txt_rect.right() - page_rect.left(),
+                txt_rect.bottom() - page_rect.top(),
+            )
+            annotations.append(PdfAnnotation(
+                page_index=page_index,
+                rect_pixels=local,
+                type="text",
+                text=text_str,
+            ))
+
+        return annotations
 
     def save_signed(self, sig_path: str) -> bool:
-        if not self.doc.is_open or self._signature is None or not self._page_sizes:
+        if not self.doc.is_open or not self.has_annotations or not self._page_sizes:
             return False
-        sig_rect = self._signature.content_scene_rect()
-        rotation = self._signature.rotation_degrees
-        page_index = self._page_for_rect(sig_rect)
-        if page_index < 0:
-            QMessageBox.warning(
-                self,
-                "Signature off the page",
-                "The signature isn't on a page. Drag it onto the page before saving.",
-            )
-            return False
-        page_rect = self._page_rect_in_scene(page_index)
-        # Map the signature from scene coords to pixels local to its page.
-        local = (
-            sig_rect.left() - page_rect.left(),
-            sig_rect.top() - page_rect.top(),
-            sig_rect.right() - page_rect.left(),
-            sig_rect.bottom() - page_rect.top(),
-        )
+
+        annotations = self._collect_annotations(sig_path)
+        if annotations is None:
+            return False  # validation failed
+
         try:
-            self.doc.stamp_and_save(page_index, sig_path, local, self.zoom, rotation)
-        except Exception as exc:  # noqa: BLE001 - report any save failure
+            self.doc.save_with_annotations(self.path, annotations, self.zoom)
+        except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
             return False
+
         self._signature = None
+        self._texts.clear()
         self.render_all_pages(preserve_scroll=True)
         return True
 
     def save_as(self, target_path: str, sig_path: str | None) -> bool:
-        """Save a copy to ``target_path``; stamps the signature if one is placed.
+        """Save a copy to ``target_path``; stamps the annotations if placed.
 
         Leaves the open document untouched on disk, so the user can keep working
         on the original.
         """
         if not self.doc.is_open:
             return False
-        if self._signature is None:
-            try:
-                self.doc.copy_to(target_path)
-                return True
-            except OSError as exc:
-                QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
+
+        annotations = []
+        if self.has_annotations:
+            ann_list = self._collect_annotations(sig_path)
+            if ann_list is None:
                 return False
-        if not sig_path:
-            QMessageBox.warning(
-                self,
-                "No signature image",
-                "Configure a signature image first via Set Signature.",
-            )
-            return False
-        sig_rect = self._signature.content_scene_rect()
-        rotation = self._signature.rotation_degrees
-        page_index = self._page_for_rect(sig_rect)
-        if page_index < 0:
-            QMessageBox.warning(
-                self,
-                "Signature off the page",
-                "The signature isn't on a page. Drag it onto the page before saving.",
-            )
-            return False
-        page_rect = self._page_rect_in_scene(page_index)
-        local = (
-            sig_rect.left() - page_rect.left(),
-            sig_rect.top() - page_rect.top(),
-            sig_rect.right() - page_rect.left(),
-            sig_rect.bottom() - page_rect.top(),
-        )
+            annotations = ann_list
+
         try:
-            self.doc.stamp_to(target_path, page_index, sig_path, local, self.zoom, rotation)
-        except Exception as exc:  # noqa: BLE001 - report any save failure
+            self.doc.save_with_annotations(target_path, annotations, self.zoom)
+        except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
             return False
+
         return True
 
     def print_to(self, printer) -> None:

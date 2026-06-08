@@ -199,7 +199,12 @@ class MainWindow(QMainWindow):
         self.act_rotate_sig_ccw.triggered.connect(lambda: self.rotate_signature(-90))
         self.addAction(self.act_rotate_sig_ccw)
 
-        self.act_save = QAction("Sign && Save", self)
+        self.act_add_text = QAction("Add text / Typewriter", self)
+        self.act_add_text.setShortcut(QKeySequence(Qt.CTRL | Qt.Key_T))
+        self.act_add_text.triggered.connect(self.add_text_annotation)
+        self.addAction(self.act_add_text)
+
+        self.act_save = QAction("Save", self)
         self.act_save.setShortcut(QKeySequence.Save)
         self.act_save.triggered.connect(self.save_signed)
 
@@ -219,8 +224,35 @@ class MainWindow(QMainWindow):
         self.act_about.triggered.connect(self.show_about)
 
     def _build_menus(self) -> None:
+        file_menu = self.menuBar().addMenu("File")
+        file_menu.addAction(self.act_open)
+
+        self.menu_recent = file_menu.addMenu("Open Recent")
+        self._populate_recent_menu()
+
+        file_menu.addSeparator()
+        file_menu.addAction(self.act_save_as)
+        file_menu.addAction(self.act_print)
+        file_menu.addSeparator()
+        file_menu.addAction(self.act_close_tab)
+
         help_menu = self.menuBar().addMenu("Help")
         help_menu.addAction(self.act_about)
+
+    def _populate_recent_menu(self) -> None:
+        self.menu_recent.clear()
+        recent = config.get_recent_files()
+        if not recent:
+            empty = self.menu_recent.addAction("No recent files")
+            empty.setEnabled(False)
+            return
+
+        for path in recent:
+            if os.path.exists(path):
+                # Use a closure or default arg to bind the path
+                action = self.menu_recent.addAction(os.path.basename(path))
+                action.setToolTip(path)
+                action.triggered.connect(lambda checked=False, p=path: self.open_path(p))
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Main", self)
@@ -241,6 +273,9 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self.act_find)
         toolbar.addAction(self.act_print)
+        toolbar.addSeparator()
+
+        toolbar.addAction(self.act_add_text)
         toolbar.addSeparator()
 
         # Single Signature dropdown replaces the old Set/Add/Sign buttons whose
@@ -305,9 +340,12 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Open failed", f"Could not open PDF:\n{exc}")
             return
         tab.changed.connect(self._update_status)
-        config.set_last_dir(os.path.dirname(path))
+        abs_path = os.path.abspath(path)
+        config.set_last_dir(os.path.dirname(abs_path))
+        config.add_recent_file(abs_path)
+        self._populate_recent_menu()
         index = self.tabs.addTab(tab, tab.title)
-        self.tabs.setTabToolTip(index, path)
+        self.tabs.setTabToolTip(index, abs_path)
         self.tabs.setCurrentIndex(index)
         self._update_status()
 
@@ -316,7 +354,7 @@ class MainWindow(QMainWindow):
             return
         widget = self.tabs.widget(index)
         if isinstance(widget, DocumentTab):
-            if not widget._ok_to_discard_signature():
+            if not widget._ok_to_discard_annotations():
                 return
             widget.close_document()
         self.tabs.removeTab(index)
@@ -349,6 +387,17 @@ class MainWindow(QMainWindow):
                 6000,
             )
 
+    def add_text_annotation(self) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            QMessageBox.information(self, "No document", "Open a PDF first.")
+            return
+        if tab.add_text():
+            self.statusBar().showMessage(
+                "Type your text, drag to position, then Save.",
+                5000,
+            )
+
     def rotate_signature(self, delta_deg: int) -> None:
         tab = self.current_tab()
         if tab is None:
@@ -363,13 +412,13 @@ class MainWindow(QMainWindow):
         tab = self.current_tab()
         if tab is None:
             return
-        if not tab.has_signature:
+        if not tab.has_annotations:
             QMessageBox.information(
-                self, "No signature", "Add your signature before saving."
+                self, "No annotations", "Add a signature or text before saving."
             )
             return
         if tab.save_signed(config.get_signature_path()):
-            self.statusBar().showMessage("Signed and saved.", 4000)
+            self.statusBar().showMessage("Saved.", 4000)
 
     def save_as_dialog(self) -> None:
         tab = self.current_tab()
@@ -434,10 +483,10 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"XPDF {version_string()}")
 
     def closeEvent(self, event) -> None:
-        # Warn before discarding any placed-but-unsaved signatures.
+        # Warn before discarding any placed-but-unsaved annotations.
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
-            if isinstance(widget, DocumentTab) and not widget._ok_to_discard_signature():
+            if isinstance(widget, DocumentTab) and not widget._ok_to_discard_annotations():
                 event.ignore()
                 return
         config.set_window_geometry(self.saveGeometry())

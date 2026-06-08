@@ -18,11 +18,32 @@ _SIGNATURE_PATH = "signature/path"
 _LAST_DIR = "files/last_dir"
 _WINDOW_GEOMETRY = "window/geometry"
 _WINDOW_STATE = "window/state"
+_RECENT_FILES = "files/recent"
 
 
 def _settings() -> QSettings:
     return QSettings(ORG, APP)
 
+def get_recent_files() -> list[str]:
+    value = _settings().value(_RECENT_FILES, [])
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, list) or isinstance(value, tuple):
+        return [str(v) for v in value]
+    # Sometimes it returns a sequence-like object that isn't list/tuple,
+    # but QSettings generally returns a list for stringlists.
+    try:
+        return [str(v) for v in value]  # type: ignore
+    except TypeError:
+        return []
+
+def add_recent_file(path: str) -> None:
+    recent = get_recent_files()
+    if path in recent:
+        recent.remove(path)
+    recent.insert(0, path)
+    recent = recent[:10]  # keep top 10
+    _settings().setValue(_RECENT_FILES, recent)
 
 def get_signature_path() -> str | None:
     value = _settings().value(_SIGNATURE_PATH)

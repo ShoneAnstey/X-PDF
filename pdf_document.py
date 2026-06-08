@@ -10,9 +10,26 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from dataclasses import dataclass
+from typing import Literal
 
 import fitz  # PyMuPDF
 from PySide6.QtGui import QImage, QPixmap
+
+
+@dataclass
+class PdfAnnotation:
+    """A user-placed annotation to be stamped onto a page."""
+    page_index: int
+    rect_pixels: tuple[float, float, float, float]  # (x0, y0, x1, y1) local to target page at `zoom`
+    type: Literal["image", "text"]
+
+    # Image properties
+    image_path: str | None = None
+    rotation: int = 0
+
+    # Text properties
+    text: str = ""
 
 
 class PdfDocument:
@@ -76,115 +93,99 @@ class PdfDocument:
         rect = self._doc[index].rect
         return rect.width, rect.height
 
+    def _apply_annotations_to_work(self, work: fitz.Document, annotations: list[PdfAnnotation], zoom: float) -> None:
+        """Apply a list of annotations to the opened PyMuPDF document."""
+        for ann in annotations:
+            x0, y0, x1, y1 = ann.rect_pixels
+            pdf_rect = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom)
+
+            if ann.type == "image":
+                work[ann.page_index].insert_image(
+                    pdf_rect,
+                    filename=ann.image_path,
+                    keep_proportion=True,
+                    overlay=True,
+                    rotate=ann.rotation,
+                )
+            elif ann.type == "text":
+                # We need to scale the font size properly. QGraphicsTextItem with a 16pt
+                # font corresponds to 16 PDF points at zoom=1.0.
+                # insert_textbox handles text wrapping, but needs slightly more room than
+                # Qt's tight bounding box to prevent it from rejecting the text.
+                text_rect = pdf_rect + (-5, -5, 5, 5)
+                rc = work[ann.page_index].insert_textbox(
+                    text_rect,
+                    ann.text,
+                    fontsize=16,
+                    fontname="helv",
+                    color=(0, 0, 0),
+                    align=0,
+                )
+                if rc < 0:
+                    # If it STILL doesn't fit, use insert_text directly as a fallback
+                    # so data is never silently dropped.
+                    work[ann.page_index].insert_text(
+                        (pdf_rect.x0, pdf_rect.y0 + 12),
+                        ann.text,
+                        fontsize=16,
+                        fontname="helv",
+                        color=(0, 0, 0),
+                    )
+
     # ----- stamping ----------------------------------------------------------
-    def stamp_and_save(
+    def save_with_annotations(
         self,
-        page_index: int,
-        signature_path: str,
-        rect_pixels: tuple[float, float, float, float],
+        target_path: str,
+        annotations: list[PdfAnnotation],
         zoom: float,
-        rotation: int = 0,
     ) -> None:
-        """Insert ``signature_path`` onto a page and overwrite the original file.
+        """Stamp annotations (images/text) into target_path.
 
-        ``rect_pixels`` is (x0, y0, x1, y1) in rendered-pixel coordinates at ``zoom``.
-        It is converted to PDF points by dividing by ``zoom``. ``rotation`` is the
-        clockwise rotation in degrees (one of 0/90/180/270) applied to the image
-        inside the target rect by PyMuPDF.
-
-        The signature is stamped into a separate working copy, not the open
-        document, so a failed save never leaves the in-memory document mutated
-        (which would otherwise double-stamp on a retry). PyMuPDF cannot save back
-        to the path it currently has open, so we write to a temporary file in the
-        same directory and atomically replace the original, then reopen it.
+        If target_path is the currently open document, it writes to a temp file and
+        replaces the original atomically. Otherwise it copies the source and stamps.
         """
         if self._doc is None or self.path is None:
             raise RuntimeError("No document open")
 
-        x0, y0, x1, y1 = rect_pixels
-        pdf_rect = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom)
+        target = os.path.abspath(target_path)
+        is_open_doc = (target == os.path.abspath(self.path))
+        target_save = target
 
-        target = self.path
-        directory = os.path.dirname(os.path.abspath(target)) or "."
-        fd, tmp_path = tempfile.mkstemp(suffix=".pdf", dir=directory)
-        os.close(fd)
+        if is_open_doc:
+            directory = os.path.dirname(target) or "."
+            fd, tmp_path = tempfile.mkstemp(suffix=".pdf", dir=directory)
+            os.close(fd)
+            target_save = tmp_path
 
-        # Stamp a byte-for-byte copy of the original and save incrementally, so all
-        # document-level structure (metadata, bookmarks/outline, named destinations,
-        # attachments, form fields) is preserved -- rebuilding a new PDF from
-        # inserted pages would silently drop all of that. The open document stays
-        # untouched until the replace succeeds, so a retry after a failure can't
-        # double-stamp.
         try:
-            shutil.copyfile(target, tmp_path)
-            work = fitz.open(tmp_path)
+            shutil.copyfile(self.path, target_save)
+            work = fitz.open(target_save)
             try:
-                work[page_index].insert_image(
-                    pdf_rect,
-                    filename=signature_path,
-                    keep_proportion=True,
-                    overlay=True,
-                    rotate=rotation,
-                )
+                self._apply_annotations_to_work(work, annotations, zoom)
                 work.save(
-                    tmp_path,
+                    target_save,
                     incremental=True,
                     encryption=fitz.PDF_ENCRYPT_KEEP,
                 )
             finally:
                 work.close()
         except Exception:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            if is_open_doc and os.path.exists(target_save):
+                os.remove(target_save)
             raise
 
-        # Release the original handle, then atomically replace and reopen.
-        self._doc.close()
-        self._doc = None
-        try:
-            os.replace(tmp_path, target)
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            self._doc = fitz.open(target)
-            self.path = target
+        if is_open_doc:
+            self._doc.close()
+            self._doc = None
+            try:
+                os.replace(target_save, target)
+            finally:
+                if os.path.exists(target_save):
+                    os.remove(target_save)
+                self._doc = fitz.open(target)
+                self.path = target
 
-    def stamp_to(
-        self,
-        target_path: str,
-        page_index: int,
-        signature_path: str,
-        rect_pixels: tuple[float, float, float, float],
-        zoom: float,
-        rotation: int = 0,
-    ) -> None:
-        """Save a signed copy to ``target_path`` without touching the open file.
 
-        When ``target_path`` is the currently-open document, delegate to
-        :meth:`stamp_and_save` so the in-memory document is replaced and reopened
-        atomically; otherwise copy the source to the target and stamp there.
-        """
-        if self._doc is None or self.path is None:
-            raise RuntimeError("No document open")
-        if os.path.abspath(target_path) == os.path.abspath(self.path):
-            self.stamp_and_save(page_index, signature_path, rect_pixels, zoom, rotation)
-            return
-
-        x0, y0, x1, y1 = rect_pixels
-        pdf_rect = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom)
-        shutil.copyfile(self.path, target_path)
-        work = fitz.open(target_path)
-        try:
-            work[page_index].insert_image(
-                pdf_rect,
-                filename=signature_path,
-                keep_proportion=True,
-                overlay=True,
-                rotate=rotation,
-            )
-            work.save(target_path, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
-        finally:
-            work.close()
 
     def copy_to(self, target_path: str) -> None:
         """Copy the currently-open file to ``target_path`` (no-op if same path)."""
