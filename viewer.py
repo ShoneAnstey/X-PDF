@@ -12,12 +12,18 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
+    QPushButton,
     QTabWidget,
     QToolBar,
+    QToolButton,
+    QVBoxLayout,
 )
 
 import config
@@ -27,6 +33,91 @@ from version import build_metadata, version_string
 
 IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.bmp)"
 PDF_FILTER = "PDF files (*.pdf)"
+
+SIGNATURE_INSTRUCTIONS = (
+    "How to set up your signature:\n"
+    "\n"
+    "  1. Sign your name on a clean, blank piece of paper.\n"
+    "  2. Take a photo with your phone in good light.\n"
+    "  3. Transfer the photo to this computer (email, AirDrop, USB \u2014 any way).\n"
+    "  4. Click \u201cChoose image\u2026\u201d below and pick that photo.\n"
+    "\n"
+    "XPDF removes the paper background automatically, so the signature can be\n"
+    "dropped onto a PDF page as if signed directly on the document."
+)
+
+
+class SignatureSetupDialog(QDialog):
+    """Walks the user through capturing and importing a signature photo."""
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Signature setup")
+        self.setModal(True)
+        self.resize(520, 360)
+
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel(SIGNATURE_INSTRUCTIONS))
+
+        self._status = QLabel(self)
+        self._status.setWordWrap(True)
+        layout.addWidget(self._status)
+
+        self._preview = QLabel(self)
+        self._preview.setAlignment(Qt.AlignCenter)
+        self._preview.setMinimumHeight(120)
+        layout.addWidget(self._preview, 1)
+
+        choose = QPushButton("Choose image\u2026", self)
+        choose.clicked.connect(self._choose_image)
+        layout.addWidget(choose)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._refresh_preview()
+
+    def _refresh_preview(self) -> None:
+        path = config.get_signature_path()
+        if path and os.path.exists(path):
+            pix = QPixmap(path)
+            if not pix.isNull():
+                self._preview.setPixmap(
+                    pix.scaled(
+                        420,
+                        140,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation,
+                    )
+                )
+                self._status.setText(f"Current signature: {path}")
+                return
+        self._preview.clear()
+        self._status.setText("No signature set yet.")
+
+    def _choose_image(self) -> None:
+        start_dir = (
+            os.path.dirname(config.get_signature_path() or "")
+            or os.path.expanduser("~")
+        )
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose signature image", start_dir, IMAGE_FILTER
+        )
+        if not path:
+            return
+        if QPixmap(path).isNull():
+            QMessageBox.warning(self, "Invalid image", "That file isn't a readable image.")
+            return
+        try:
+            prepared = os.path.join(config.cache_dir(), "signature.png")
+            prepare_signature(path, prepared)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Couldn't prepare signature", str(exc))
+            return
+        config.set_signature_path(prepared)
+        self._refresh_preview()
 
 
 class MainWindow(QMainWindow):
@@ -90,11 +181,23 @@ class MainWindow(QMainWindow):
         self.act_fit = QAction("Fit Width", self)
         self.act_fit.triggered.connect(lambda: self._on_tab(lambda t: t.fit_width()))
 
-        self.act_set_sig = QAction("Set Signature", self)
-        self.act_set_sig.triggered.connect(self.set_signature_image)
+        self.act_set_sig = QAction("Signature setup...", self)
+        self.act_set_sig.triggered.connect(self.open_signature_setup)
 
-        self.act_add_sig = QAction("Add Signature", self)
+        self.act_add_sig = QAction("Place signature on page", self)
         self.act_add_sig.triggered.connect(self.add_signature)
+
+        self.act_rotate_sig_cw = QAction("Rotate signature 90° clockwise", self)
+        self.act_rotate_sig_cw.setShortcut(QKeySequence(Qt.Key_R))
+        self.act_rotate_sig_cw.triggered.connect(lambda: self.rotate_signature(90))
+        self.addAction(self.act_rotate_sig_cw)
+
+        self.act_rotate_sig_ccw = QAction(
+            "Rotate signature 90° counter-clockwise", self
+        )
+        self.act_rotate_sig_ccw.setShortcut(QKeySequence(Qt.SHIFT | Qt.Key_R))
+        self.act_rotate_sig_ccw.triggered.connect(lambda: self.rotate_signature(-90))
+        self.addAction(self.act_rotate_sig_ccw)
 
         self.act_save = QAction("Sign && Save", self)
         self.act_save.setShortcut(QKeySequence.Save)
@@ -139,9 +242,26 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.act_find)
         toolbar.addAction(self.act_print)
         toolbar.addSeparator()
-        toolbar.addAction(self.act_set_sig)
-        toolbar.addAction(self.act_add_sig)
-        toolbar.addAction(self.act_save)
+
+        # Single Signature dropdown replaces the old Set/Add/Sign buttons whose
+        # names were too similar to tell apart at a glance.
+        sig_menu = QMenu(self)
+        sig_menu.addAction(self.act_set_sig)
+        sig_menu.addAction(self.act_add_sig)
+        sig_menu.addSeparator()
+        sig_menu.addAction(self.act_rotate_sig_cw)
+        sig_menu.addAction(self.act_rotate_sig_ccw)
+        sig_menu.addSeparator()
+        sig_menu.addAction(self.act_save)
+        self._sig_menu = sig_menu
+
+        sig_button = QToolButton(self)
+        sig_button.setText("Signature")
+        sig_button.setToolTip("Set up, place, rotate, or save your signature")
+        sig_button.setPopupMode(QToolButton.InstantPopup)
+        sig_button.setMenu(sig_menu)
+        toolbar.addWidget(sig_button)
+
         toolbar.addAction(self.act_save_as)
 
         self.status_label = QLabel("No document")
@@ -152,7 +272,9 @@ class MainWindow(QMainWindow):
             self.act_open, self.act_prev, self.act_next,
             self.act_zoom_out, self.act_zoom_in, self.act_fit,
             self.act_find, self.act_print,
-            self.act_set_sig, self.act_add_sig, self.act_save, self.act_save_as,
+            self.act_set_sig, self.act_add_sig,
+            self.act_rotate_sig_cw, self.act_rotate_sig_ccw,
+            self.act_save, self.act_save_as,
         ):
             shortcut = action.shortcut().toString()
             label = action.text().replace("&&", "&").replace("...", "")
@@ -203,29 +325,10 @@ class MainWindow(QMainWindow):
         self._update_status()
 
     # ----- signature ---------------------------------------------------------
-    def set_signature_image(self) -> None:
-        start_dir = (
-            os.path.dirname(config.get_signature_path() or "")
-            or os.path.expanduser("~")
-        )
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Choose signature image", start_dir, IMAGE_FILTER
-        )
-        if not path:
-            return
-        if QPixmap(path).isNull():
-            QMessageBox.warning(self, "Invalid image", "That file isn't a readable image.")
-            return
-        try:
-            prepared = os.path.join(config.cache_dir(), "signature.png")
-            prepare_signature(path, prepared)
-        except ValueError as exc:
-            QMessageBox.warning(self, "Couldn't prepare signature", str(exc))
-            return
-        config.set_signature_path(prepared)
-        self.statusBar().showMessage(
-            "Signature ready — background removed automatically.", 4000
-        )
+    def open_signature_setup(self) -> None:
+        """Open the signature setup dialog (instructions + image picker)."""
+        dialog = SignatureSetupDialog(self)
+        dialog.exec()
 
     def add_signature(self) -> None:
         tab = self.current_tab()
@@ -237,12 +340,23 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "No signature set",
-                "Use 'Set Signature' to choose your signature image first.",
+                "Open 'Signature ▾ → Signature setup...' to choose your signature image first.",
             )
             return
         if tab.add_signature(sig_path):
             self.statusBar().showMessage(
-                "Drag to position, drag the corner to resize, then Sign & Save.", 5000
+                "Drag to position, drag the corner to resize, press R to rotate, then Sign & Save.",
+                6000,
+            )
+
+    def rotate_signature(self, delta_deg: int) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            return
+        if not tab.rotate_signature(delta_deg):
+            self.statusBar().showMessage(
+                "Place a signature first (Signature ▾ → Place signature on page).",
+                4000,
             )
 
     def save_signed(self) -> None:

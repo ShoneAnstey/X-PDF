@@ -83,11 +83,14 @@ class PdfDocument:
         signature_path: str,
         rect_pixels: tuple[float, float, float, float],
         zoom: float,
+        rotation: int = 0,
     ) -> None:
         """Insert ``signature_path`` onto a page and overwrite the original file.
 
         ``rect_pixels`` is (x0, y0, x1, y1) in rendered-pixel coordinates at ``zoom``.
-        It is converted to PDF points by dividing by ``zoom``.
+        It is converted to PDF points by dividing by ``zoom``. ``rotation`` is the
+        clockwise rotation in degrees (one of 0/90/180/270) applied to the image
+        inside the target rect by PyMuPDF.
 
         The signature is stamped into a separate working copy, not the open
         document, so a failed save never leaves the in-memory document mutated
@@ -121,6 +124,7 @@ class PdfDocument:
                     filename=signature_path,
                     keep_proportion=True,
                     overlay=True,
+                    rotate=rotation,
                 )
                 work.save(
                     tmp_path,
@@ -152,6 +156,7 @@ class PdfDocument:
         signature_path: str,
         rect_pixels: tuple[float, float, float, float],
         zoom: float,
+        rotation: int = 0,
     ) -> None:
         """Save a signed copy to ``target_path`` without touching the open file.
 
@@ -162,7 +167,7 @@ class PdfDocument:
         if self._doc is None or self.path is None:
             raise RuntimeError("No document open")
         if os.path.abspath(target_path) == os.path.abspath(self.path):
-            self.stamp_and_save(page_index, signature_path, rect_pixels, zoom)
+            self.stamp_and_save(page_index, signature_path, rect_pixels, zoom, rotation)
             return
 
         x0, y0, x1, y1 = rect_pixels
@@ -175,6 +180,7 @@ class PdfDocument:
                 filename=signature_path,
                 keep_proportion=True,
                 overlay=True,
+                rotate=rotation,
             )
             work.save(target_path, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
         finally:

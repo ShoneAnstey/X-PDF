@@ -442,6 +442,15 @@ class DocumentTab(QWidget):
         self.view.ensureVisible(item.content_scene_rect(), 20, 20)
         return True
 
+    def rotate_signature(self, delta_deg: int) -> bool:
+        """Rotate the placed signature by 90/180/270 degrees. No-op if none placed."""
+        if self._signature is None:
+            return False
+        self._signature.rotate_by(delta_deg)
+        # Keep the (now rotated) signature visible in the viewport.
+        self.view.ensureVisible(self._signature.content_scene_rect(), 20, 20)
+        return True
+
     @property
     def has_signature(self) -> bool:
         return self._signature is not None
@@ -450,6 +459,7 @@ class DocumentTab(QWidget):
         if not self.doc.is_open or self._signature is None or not self._page_sizes:
             return False
         sig_rect = self._signature.content_scene_rect()
+        rotation = self._signature.rotation_degrees
         page_index = self._page_for_rect(sig_rect)
         if page_index < 0:
             QMessageBox.warning(
@@ -467,7 +477,7 @@ class DocumentTab(QWidget):
             sig_rect.bottom() - page_rect.top(),
         )
         try:
-            self.doc.stamp_and_save(page_index, sig_path, local, self.zoom)
+            self.doc.stamp_and_save(page_index, sig_path, local, self.zoom, rotation)
         except Exception as exc:  # noqa: BLE001 - report any save failure
             QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
             return False
@@ -498,6 +508,7 @@ class DocumentTab(QWidget):
             )
             return False
         sig_rect = self._signature.content_scene_rect()
+        rotation = self._signature.rotation_degrees
         page_index = self._page_for_rect(sig_rect)
         if page_index < 0:
             QMessageBox.warning(
@@ -514,7 +525,7 @@ class DocumentTab(QWidget):
             sig_rect.bottom() - page_rect.top(),
         )
         try:
-            self.doc.stamp_to(target_path, page_index, sig_path, local, self.zoom)
+            self.doc.stamp_to(target_path, page_index, sig_path, local, self.zoom, rotation)
         except Exception as exc:  # noqa: BLE001 - report any save failure
             QMessageBox.critical(self, "Save failed", f"Could not save:\n{exc}")
             return False

@@ -36,11 +36,29 @@ class SignatureItem(QGraphicsObject):
         self._pixmap = QPixmap.fromImage(self._source)
 
         self._resizing = False
+        self._rotation_deg = 0  # 0/90/180/270; PyMuPDF only accepts those.
 
         self.setFlag(QGraphicsItem.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setAcceptHoverEvents(True)
         self.setZValue(100)
+        # Rotate around the centre of the image rect, not the item's origin,
+        # so the signature stays put visually as it spins.
+        self.setTransformOriginPoint(self._rect.center())
+
+    # ----- rotation ----------------------------------------------------------
+    @property
+    def rotation_degrees(self) -> int:
+        """Current rotation in degrees (always one of 0/90/180/270)."""
+        return self._rotation_deg
+
+    def rotate_by(self, delta_deg: int) -> None:
+        """Rotate by a multiple of 90 degrees; resets origin so rotation stays centred."""
+        if delta_deg % 90 != 0:
+            raise ValueError("Rotation must be a multiple of 90 degrees")
+        self._rotation_deg = (self._rotation_deg + delta_deg) % 360
+        self.setTransformOriginPoint(self._rect.center())
+        self.setRotation(self._rotation_deg)
 
     # ----- geometry ----------------------------------------------------------
     def boundingRect(self) -> QRectF:
@@ -107,6 +125,8 @@ class SignatureItem(QGraphicsObject):
                 new_width,
                 new_width * self._aspect,
             )
+            # Keep rotation pivot at the rect's centre as it grows/shrinks.
+            self.setTransformOriginPoint(self._rect.center())
             self.update()
             event.accept()
             return
