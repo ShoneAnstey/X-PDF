@@ -7,6 +7,7 @@ import os
 from PySide6.QtCore import QEvent, QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (
+    QFileDialog,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -34,6 +36,9 @@ class DocumentTab(QWidget):
     """Owns one PdfDocument and its view. Emits ``changed`` when state updates."""
 
     changed = Signal()
+    # Emitted when the page set changes (e.g. a page is deleted) so the sidebar
+    # can rebuild its thumbnails and outline.
+    structure_changed = Signal()
 
     def __init__(self, path: str) -> None:
         super().__init__()
@@ -77,6 +82,9 @@ class DocumentTab(QWidget):
         self.view.viewport().installEventFilter(self)
         # Keep the status bar's page number in sync as the user scrolls.
         self.view.verticalScrollBar().valueChanged.connect(self._on_scroll)
+        # Right-click a page for surgery (extract / delete).
+        self.view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.view.customContextMenuRequested.connect(self._show_page_menu)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -407,6 +415,103 @@ class DocumentTab(QWidget):
     def prev_page(self) -> None:
         if self.doc.is_open and self._current_page > 0:
             self._scroll_to_page(self._current_page - 1)
+
+    @property
+    def current_page(self) -> int:
+        return self._current_page
+
+    def goto_page(self, index: int) -> None:
+        """Public navigation: scroll so page ``index`` is at the top of the view."""
+        self._scroll_to_page(index)
+
+    # ----- page surgery ------------------------------------------------------
+    def _page_at_viewport_pos(self, view_pos) -> int:
+        """Map a position in the view's viewport to a page index, or -1."""
+        scene_pos = self.view.mapToScene(view_pos)
+        for i in range(len(self._page_sizes)):
+            if self._page_rect_in_scene(i).contains(scene_pos):
+                return i
+        return -1
+
+    def _show_page_menu(self, view_pos) -> None:
+        if not self.doc.is_open:
+            return
+        page_index = self._page_at_viewport_pos(view_pos)
+        if page_index < 0:
+            page_index = self._current_page
+
+        menu = QMenu(self)
+        extract_act = menu.addAction(f"Extract page {page_index + 1} to new PDF...")
+        delete_act = menu.addAction(f"Delete page {page_index + 1}")
+        # Can't delete the only page.
+        delete_act.setEnabled(self.doc.page_count > 1)
+
+        chosen = menu.exec(self.view.viewport().mapToGlobal(view_pos))
+        if chosen is extract_act:
+            self.extract_page(page_index)
+        elif chosen is delete_act:
+            self.delete_page(page_index)
+
+    def extract_page(self, page_index: int) -> bool:
+        """Save page ``page_index`` as a standalone PDF chosen by the user."""
+        if not self.doc.is_open:
+            return False
+        stem = os.path.splitext(self.title)[0]
+        suggested = f"{stem} - page {page_index + 1}.pdf"
+        start_dir = os.path.dirname(self.path) if self.path else os.path.expanduser("~")
+        target, _ = QFileDialog.getSaveFileName(
+            self, "Extract page to PDF", os.path.join(start_dir, suggested),
+            "PDF files (*.pdf)",
+        )
+        if not target:
+            return False
+        if not target.lower().endswith(".pdf"):
+            target += ".pdf"
+        try:
+            self.doc.extract_pages(target, [page_index])
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Extract failed", f"Could not extract page:\n{exc}")
+            return False
+        return True
+
+    def delete_page(self, page_index: int) -> bool:
+        """Delete page ``page_index`` from the document on disk, after confirming."""
+        if not self.doc.is_open:
+            return False
+        if self.doc.page_count <= 1:
+            QMessageBox.information(
+                self, "Can't delete", "A PDF must keep at least one page."
+            )
+            return False
+        reply = QMessageBox.warning(
+            self,
+            "Delete page",
+            f"Delete page {page_index + 1} of {self.doc.page_count}? "
+            "This rewrites the file on disk and can't be undone here.",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return False
+        # Deleting touches the file, so discard any unsaved overlays first.
+        self._discard_overlays()
+        try:
+            self.doc.delete_page(page_index)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Delete failed", f"Could not delete page:\n{exc}")
+            return False
+        self._current_page = min(self._current_page, self.doc.page_count - 1)
+        self.render_all_pages()
+        self.structure_changed.emit()
+        return True
+
+    def _discard_overlays(self) -> None:
+        """Remove any placed-but-unsaved signature/text overlays from the scene."""
+        if self._signature is not None:
+            self.scene.removeItem(self._signature)
+            self._signature = None
+        for txt in self._texts:
+            self.scene.removeItem(txt)
+        self._texts = []
 
     # ----- zoom --------------------------------------------------------------
     def zoom_in(self) -> None:

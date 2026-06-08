@@ -19,6 +19,8 @@ _LAST_DIR = "files/last_dir"
 _WINDOW_GEOMETRY = "window/geometry"
 _WINDOW_STATE = "window/state"
 _RECENT_FILES = "files/recent"
+_DARK_MODE = "ui/dark_mode"
+_SIDEBAR_VISIBLE = "ui/sidebar_visible"
 
 
 def _settings() -> QSettings:
@@ -69,6 +71,22 @@ def get_window_geometry():
 
 def set_window_geometry(geometry) -> None:
     _settings().setValue(_WINDOW_GEOMETRY, geometry)
+
+
+def get_dark_mode() -> bool:
+    return bool(_settings().value(_DARK_MODE, False, type=bool))
+
+
+def set_dark_mode(enabled: bool) -> None:
+    _settings().setValue(_DARK_MODE, bool(enabled))
+
+
+def get_sidebar_visible() -> bool:
+    return bool(_settings().value(_SIDEBAR_VISIBLE, True, type=bool))
+
+
+def set_sidebar_visible(visible: bool) -> None:
+    _settings().setValue(_SIDEBAR_VISIBLE, bool(visible))
 
 
 def cache_dir() -> str:

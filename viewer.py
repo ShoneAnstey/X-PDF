@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTabWidget,
     QToolBar,
     QToolButton,
@@ -28,11 +30,33 @@ from PySide6.QtWidgets import (
 
 import config
 from document_tab import DocumentTab
+from sidebar import Sidebar
 from signature_processing import prepare_signature
 from version import build_metadata, version_string
 
 IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.bmp)"
 PDF_FILTER = "PDF files (*.pdf)"
+
+# A compact dark theme for the app chrome. PDF pages keep their own (usually
+# white) background; only the surrounding UI is darkened.
+_DARK_STYLESHEET = """
+QWidget { background-color: #2b2b2b; color: #e0e0e0; }
+QMenuBar, QMenu { background-color: #2b2b2b; color: #e0e0e0; }
+QMenuBar::item:selected, QMenu::item:selected { background-color: #3d6ea5; }
+QToolBar { background-color: #333333; border: none; }
+QToolButton { background-color: transparent; color: #e0e0e0; padding: 4px; }
+QToolButton:hover { background-color: #3d6ea5; }
+QTabBar::tab { background: #333333; color: #cccccc; padding: 6px 12px; }
+QTabBar::tab:selected { background: #2b2b2b; color: #ffffff; }
+QTabWidget::pane { border: 1px solid #444444; }
+QListWidget, QTreeWidget { background-color: #232323; color: #e0e0e0; }
+QListWidget::item:selected, QTreeWidget::item:selected { background-color: #3d6ea5; }
+QLineEdit { background-color: #232323; color: #e0e0e0; border: 1px solid #555555; }
+QPushButton { background-color: #444444; color: #e0e0e0; padding: 4px 10px; }
+QPushButton:hover { background-color: #3d6ea5; }
+QStatusBar { background-color: #333333; color: #cccccc; }
+QGraphicsView { background-color: #1e1e1e; }
+"""
 
 SIGNATURE_INSTRUCTIONS = (
     "How to set up your signature:\n"
@@ -132,12 +156,26 @@ class MainWindow(QMainWindow):
         self.tabs.setMovable(True)
         self.tabs.setDocumentMode(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
-        self.tabs.currentChanged.connect(self._update_status)
-        self.setCentralWidget(self.tabs)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
+        # Navigation sidebar (thumbnails + outline) on the left, pages on the right.
+        self.sidebar = Sidebar(self)
+        self.sidebar.page_selected.connect(self._on_sidebar_page_selected)
+
+        splitter = QSplitter(Qt.Horizontal, self)
+        splitter.addWidget(self.sidebar)
+        splitter.addWidget(self.tabs)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([220, 780])
+        self._splitter = splitter
+        self.setCentralWidget(splitter)
 
         self._build_actions()
         self._build_toolbar()
         self._build_menus()
+        self._apply_theme(config.get_dark_mode())
+        self.sidebar.setVisible(config.get_sidebar_visible())
         self._update_status()
 
         geometry = config.get_window_geometry()
@@ -220,6 +258,18 @@ class MainWindow(QMainWindow):
         self.act_print.setShortcut(QKeySequence.Print)
         self.act_print.triggered.connect(self.print_document)
 
+        self.act_toggle_sidebar = QAction("Show Sidebar", self)
+        self.act_toggle_sidebar.setCheckable(True)
+        self.act_toggle_sidebar.setChecked(config.get_sidebar_visible())
+        self.act_toggle_sidebar.setShortcut(QKeySequence(Qt.Key_F9))
+        self.act_toggle_sidebar.triggered.connect(self.toggle_sidebar)
+        self.addAction(self.act_toggle_sidebar)
+
+        self.act_dark_mode = QAction("Dark Mode", self)
+        self.act_dark_mode.setCheckable(True)
+        self.act_dark_mode.setChecked(config.get_dark_mode())
+        self.act_dark_mode.triggered.connect(self.toggle_dark_mode)
+
         self.act_about = QAction("About XPDF", self)
         self.act_about.triggered.connect(self.show_about)
 
@@ -235,6 +285,10 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.act_print)
         file_menu.addSeparator()
         file_menu.addAction(self.act_close_tab)
+
+        view_menu = self.menuBar().addMenu("View")
+        view_menu.addAction(self.act_toggle_sidebar)
+        view_menu.addAction(self.act_dark_mode)
 
         help_menu = self.menuBar().addMenu("Help")
         help_menu.addAction(self.act_about)
@@ -347,7 +401,10 @@ class MainWindow(QMainWindow):
         index = self.tabs.addTab(tab, tab.title)
         self.tabs.setTabToolTip(index, abs_path)
         self.tabs.setCurrentIndex(index)
+        tab.structure_changed.connect(self._refresh_sidebar)
+        tab.changed.connect(self._sync_sidebar_highlight)
         self._update_status()
+        self._refresh_sidebar()
 
     def close_tab(self, index: int) -> None:
         if index < 0:
@@ -481,6 +538,44 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setText("No document")
             self.setWindowTitle(f"XPDF {version_string()}")
+
+    # ----- sidebar & theme ---------------------------------------------------
+    def _on_tab_changed(self, _index: int = -1) -> None:
+        """Refresh the status bar and rebuild the sidebar for the active tab."""
+        self._update_status()
+        self._refresh_sidebar()
+
+    def _refresh_sidebar(self) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            self.sidebar.clear()
+            return
+        self.sidebar.load_document(tab.doc)
+        self.sidebar.highlight_page(tab.current_page)
+
+    def _sync_sidebar_highlight(self) -> None:
+        tab = self.current_tab()
+        if tab is not None:
+            self.sidebar.highlight_page(tab.current_page)
+
+    def _on_sidebar_page_selected(self, index: int) -> None:
+        tab = self.current_tab()
+        if tab is not None:
+            tab.goto_page(index)
+
+    def toggle_sidebar(self, checked: bool) -> None:
+        self.sidebar.setVisible(checked)
+        config.set_sidebar_visible(checked)
+
+    def toggle_dark_mode(self, checked: bool) -> None:
+        config.set_dark_mode(checked)
+        self._apply_theme(checked)
+
+    def _apply_theme(self, dark: bool) -> None:
+        app = QApplication.instance()
+        if not isinstance(app, QApplication):
+            return
+        app.setStyleSheet(_DARK_STYLESHEET if dark else "")
 
     def closeEvent(self, event) -> None:
         # Warn before discarding any placed-but-unsaved annotations.

@@ -195,6 +195,100 @@ class PdfDocument:
             return
         shutil.copyfile(self.path, target_path)
 
+    # ----- navigation: thumbnails + outline ----------------------------------
+    def render_thumbnail(self, index: int, max_px: int = 160) -> QImage:
+        """Render a small thumbnail of page ``index`` fitting within ``max_px``."""
+        if self._doc is None:
+            raise RuntimeError("No document open")
+        page = self._doc[index]
+        rect = page.rect
+        longest = max(rect.width, rect.height) or 1.0
+        scale = max_px / longest
+        matrix = fitz.Matrix(scale, scale)
+        pix = page.get_pixmap(matrix=matrix, alpha=False)
+        image = QImage(
+            pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
+        )
+        return image.copy()
+
+    def outline(self) -> list[tuple[int, str, int]]:
+        """Return the table of contents as (level, title, page_index) rows.
+
+        Page numbers from PyMuPDF's ``get_toc`` are 1-based; we convert to 0-based
+        page indices and drop entries that don't point at a real page.
+        """
+        if self._doc is None:
+            raise RuntimeError("No document open")
+        rows: list[tuple[int, str, int]] = []
+        for level, title, page in self._doc.get_toc():
+            page_index = page - 1
+            if 0 <= page_index < self._doc.page_count:
+                rows.append((level, title, page_index))
+        return rows
+
+    # ----- page surgery ------------------------------------------------------
+    def extract_pages(self, target_path: str, page_indices: list[int]) -> None:
+        """Write a new PDF at ``target_path`` containing only ``page_indices``.
+
+        The open document is never modified. Pages are written in the order given.
+        """
+        if self._doc is None or self.path is None:
+            raise RuntimeError("No document open")
+        if not page_indices:
+            raise ValueError("No pages selected to extract")
+        out = fitz.open()
+        try:
+            for idx in page_indices:
+                if not (0 <= idx < self._doc.page_count):
+                    raise IndexError(f"Page {idx} out of range")
+                out.insert_pdf(self._doc, from_page=idx, to_page=idx)
+            out.save(target_path, garbage=4, deflate=True)
+        finally:
+            out.close()
+
+    def delete_page(self, index: int) -> None:
+        """Delete page ``index`` and overwrite the original file on disk.
+
+        Mirrors the safe-save pattern used for stamping: the deletion happens in a
+        temporary copy that atomically replaces the original, so a failure leaves
+        the document untouched. The last remaining page cannot be deleted.
+        """
+        if self._doc is None or self.path is None:
+            raise RuntimeError("No document open")
+        if not (0 <= index < self._doc.page_count):
+            raise IndexError(f"Page {index} out of range")
+        if self._doc.page_count <= 1:
+            raise ValueError("Cannot delete the only page in the document")
+
+        target = os.path.abspath(self.path)
+        directory = os.path.dirname(target) or "."
+        fd, tmp_path = tempfile.mkstemp(suffix=".pdf", dir=directory)
+        os.close(fd)
+        try:
+            work = fitz.open(target)
+            try:
+                work.delete_page(index)
+                # Full rewrite to a fresh file (PyMuPDF refuses a non-incremental
+                # save back onto the path it opened), so the removed page's objects
+                # are actually dropped and the file shrinks.
+                work.save(tmp_path, garbage=4, deflate=True)
+            finally:
+                work.close()
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
+
+        self._doc.close()
+        self._doc = None
+        try:
+            os.replace(tmp_path, target)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            self._doc = fitz.open(target)
+            self.path = target
+
     # ----- search ------------------------------------------------------------
     def search_page(self, index: int, text: str) -> list[fitz.Rect]:
         """Return rectangles (PDF points) where ``text`` matches on page ``index``."""
