@@ -45,15 +45,34 @@ class Sidebar(QTabWidget):
         self._outline.itemClicked.connect(self._on_outline_clicked)
         self.addTab(self._outline, "Outline")
 
+        # Track what's currently displayed so we can skip a full, expensive
+        # rebuild when the active document and its page set haven't changed.
+        self._shown_path: str | None = None
+        self._shown_version: int = -1
+
     def clear(self) -> None:
         self._thumbs.clear()
         self._outline.clear()
+        self._shown_path = None
+        self._shown_version = -1
 
     def load_document(self, doc) -> None:
-        """Populate thumbnails and the outline from a PdfDocument."""
-        self.clear()
+        """Populate thumbnails and the outline from a PdfDocument.
+
+        Re-rendering every thumbnail is costly, so if we're asked to show the same
+        document at the same structure version we already have on screen, we do
+        nothing and let the cached widgets stand.
+        """
         if doc is None or not doc.is_open:
+            self.clear()
             return
+
+        if doc.path == self._shown_path and doc.structure_version == self._shown_version:
+            return
+
+        self.clear()
+        self._shown_path = doc.path
+        self._shown_version = doc.structure_version
 
         for i in range(doc.page_count):
             image = doc.render_thumbnail(i, THUMB_PX)
@@ -80,7 +99,8 @@ class Sidebar(QTabWidget):
                 stack.append((level, node))
             self._outline.expandAll()
         else:
-            # No bookmarks: keep the tab but show nothing, and default to Pages.
+            # No bookmarks: grey out the Outline tab and show the Pages tab instead.
+            self.setTabEnabled(1, False)
             self.setCurrentIndex(0)
 
     def highlight_page(self, index: int) -> None:

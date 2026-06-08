@@ -483,6 +483,10 @@ class DocumentTab(QWidget):
                 self, "Can't delete", "A PDF must keep at least one page."
             )
             return False
+        # Deleting rewrites the file, so any placed-but-unsaved signature or text
+        # would be lost. Confirm discarding those first (no prompt if there are none).
+        if not self._ok_to_discard_annotations():
+            return False
         reply = QMessageBox.warning(
             self,
             "Delete page",
@@ -492,13 +496,14 @@ class DocumentTab(QWidget):
         )
         if reply != QMessageBox.Yes:
             return False
-        # Deleting touches the file, so discard any unsaved overlays first.
-        self._discard_overlays()
         try:
             self.doc.delete_page(page_index)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Delete failed", f"Could not delete page:\n{exc}")
             return False
+        # The delete succeeded: only now is it safe to drop the unsaved overlays
+        # (their page coordinates are no longer valid) and re-render.
+        self._discard_overlays()
         self._current_page = min(self._current_page, self.doc.page_count - 1)
         self.render_all_pages()
         self.structure_changed.emit()

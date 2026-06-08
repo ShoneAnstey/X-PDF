@@ -43,6 +43,12 @@ class PdfDocument:
     def __init__(self) -> None:
         self._doc: fitz.Document | None = None
         self.path: str | None = None
+        # Cache of rendered thumbnails keyed by (page_index, max_px). Rasterizing a
+        # page is expensive, so the sidebar reuses these across tab switches.
+        self._thumb_cache: dict[tuple[int, int], QImage] = {}
+        # Bumped whenever the page set changes (e.g. a delete) so callers can tell
+        # a cached view is stale without diffing the whole document.
+        self._structure_version = 0
 
     # ----- lifecycle ---------------------------------------------------------
     def load(self, path: str) -> None:
@@ -55,10 +61,16 @@ class PdfDocument:
             self._doc.close()
             self._doc = None
         self.path = None
+        self._thumb_cache.clear()
 
     @property
     def is_open(self) -> bool:
         return self._doc is not None
+
+    @property
+    def structure_version(self) -> int:
+        """Increments each time the page set changes (used to invalidate caches)."""
+        return self._structure_version
 
     @property
     def page_count(self) -> int:
@@ -200,6 +212,9 @@ class PdfDocument:
         """Render a small thumbnail of page ``index`` fitting within ``max_px``."""
         if self._doc is None:
             raise RuntimeError("No document open")
+        cached = self._thumb_cache.get((index, max_px))
+        if cached is not None:
+            return cached
         page = self._doc[index]
         rect = page.rect
         longest = max(rect.width, rect.height) or 1.0
@@ -208,8 +223,9 @@ class PdfDocument:
         pix = page.get_pixmap(matrix=matrix, alpha=False)
         image = QImage(
             pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
-        )
-        return image.copy()
+        ).copy()
+        self._thumb_cache[(index, max_px)] = image
+        return image
 
     def outline(self) -> list[tuple[int, str, int]]:
         """Return the table of contents as (level, title, page_index) rows.
@@ -288,6 +304,10 @@ class PdfDocument:
                 os.remove(tmp_path)
             self._doc = fitz.open(target)
             self.path = target
+        # The page set changed: cached thumbnails are stale and any structure-aware
+        # view (the sidebar) needs to know to rebuild.
+        self._thumb_cache.clear()
+        self._structure_version += 1
 
     # ----- search ------------------------------------------------------------
     def search_page(self, index: int, text: str) -> list[fitz.Rect]:

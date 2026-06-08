@@ -394,17 +394,17 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Open failed", f"Could not open PDF:\n{exc}")
             return
         tab.changed.connect(self._update_status)
+        tab.structure_changed.connect(self._refresh_sidebar)
+        tab.changed.connect(self._sync_sidebar_highlight)
         abs_path = os.path.abspath(path)
         config.set_last_dir(os.path.dirname(abs_path))
         config.add_recent_file(abs_path)
         self._populate_recent_menu()
         index = self.tabs.addTab(tab, tab.title)
         self.tabs.setTabToolTip(index, abs_path)
+        # Making the new tab current fires currentChanged -> _on_tab_changed,
+        # which updates the status bar and rebuilds the sidebar exactly once.
         self.tabs.setCurrentIndex(index)
-        tab.structure_changed.connect(self._refresh_sidebar)
-        tab.changed.connect(self._sync_sidebar_highlight)
-        self._update_status()
-        self._refresh_sidebar()
 
     def close_tab(self, index: int) -> None:
         if index < 0:
