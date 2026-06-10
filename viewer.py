@@ -32,6 +32,7 @@ import config
 from document_tab import DocumentTab
 from sidebar import Sidebar
 from signature_processing import prepare_signature
+from text_item import TextItem
 from version import build_metadata, version_string
 
 IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.bmp)"
@@ -267,6 +268,14 @@ class MainWindow(QMainWindow):
         self.act_add_highlight.triggered.connect(self.add_highlight_annotation)
         self.addAction(self.act_add_highlight)
 
+        self.act_undo = QAction("Undo", self)
+        self.act_undo.setShortcut(QKeySequence.StandardKey.Undo)
+        self.act_undo.triggered.connect(self.undo_annotation)
+        self.addAction(self.act_undo)
+
+        self.act_append_pdf = QAction("Append PDF...", self)
+        self.act_append_pdf.triggered.connect(self.append_pdf_dialog)
+
         self.act_save = QAction("Save", self)
         self.act_save.setShortcut(QKeySequence.Save)
         self.act_save.triggered.connect(self.save_signed)
@@ -307,6 +316,7 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
         file_menu.addAction(self.act_save_as)
+        file_menu.addAction(self.act_append_pdf)
         file_menu.addAction(self.act_print)
         file_menu.addSeparator()
         file_menu.addAction(self.act_close_tab)
@@ -505,6 +515,37 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "Drag over the text, drag the corner to resize, Delete to remove, then Save.",
                 6000,
+            )
+
+    def undo_annotation(self) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            return
+        # If the user is editing inside a text box, Ctrl+Z must undo typing in
+        # that box, not remove the most recently placed annotation.
+        focus_item = tab.scene.focusItem()
+        if isinstance(focus_item, TextItem):
+            focus_item.document().undo()
+            return
+        if tab.undo_annotation():
+            self.statusBar().showMessage("Annotation undone.", 3000)
+        else:
+            self.statusBar().showMessage("Nothing to undo.", 3000)
+
+    def append_pdf_dialog(self) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            QMessageBox.information(self, "No document", "Open a PDF first.")
+            return
+        start_dir = config.get_last_dir() or os.path.expanduser("~")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Append PDF to end of document", start_dir, PDF_FILTER
+        )
+        if not path:
+            return
+        if tab.append_pdf(path):
+            self.statusBar().showMessage(
+                f"Appended {os.path.basename(path)}.", 4000
             )
 
     def rotate_signature(self, delta_deg: int) -> None:

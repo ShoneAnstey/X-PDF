@@ -30,8 +30,12 @@ paid PDF suites for everyday reading, signing, and light editing.
 - **Highlighter** (`Ctrl+H`) — drop a marker-yellow highlight, drag it over the
   text, resize with the corner handle, `Delete` to remove; saved as a real PDF
   highlight annotation
-- **Page surgery** — right-click any page to **extract it to a new PDF** or
-  **delete it** from the document
+- **Undo** (`Ctrl+Z`) — reverses annotation placement/removal (inside a text box
+  it undoes typing)
+- **Page surgery** — right-click any page to **extract it to a new PDF**,
+  **rotate it left/right**, or **delete it** from the document
+- **Append PDF** — File → Append PDF... merges another PDF onto the end of the
+  open document
 
 ### Save
 - Saving overwrites the original file (atomic temp-file replace), or use
@@ -64,7 +68,7 @@ First use:
 
 ### Shortcuts
 - Open: `Ctrl+O`  •  Close tab: `Ctrl+W`  •  Save: `Ctrl+S`  •  Save As: `Ctrl+Shift+S`
-- Find: `Ctrl+F`  •  Print: `Ctrl+P`  •  Add text: `Ctrl+T`  •  Highlight: `Ctrl+H`  •  Toggle sidebar: `F9`
+- Find: `Ctrl+F`  •  Print: `Ctrl+P`  •  Add text: `Ctrl+T`  •  Highlight: `Ctrl+H`  •  Undo: `Ctrl+Z`  •  Toggle sidebar: `F9`
 - Rotate signature: `R` / `Shift+R`
 - Next / Previous page: `PageDown` / `PageUp`
 - Zoom in / out: `Ctrl++` / `Ctrl+-`, or **Ctrl + mouse wheel**

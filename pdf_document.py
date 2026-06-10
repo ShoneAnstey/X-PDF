@@ -281,7 +281,50 @@ class PdfDocument:
             raise IndexError(f"Page {index} out of range")
         if self._doc.page_count <= 1:
             raise ValueError("Cannot delete the only page in the document")
+        self._rewrite_in_place(lambda work: work.delete_page(index))
 
+    def rotate_page(self, index: int, delta_deg: int) -> None:
+        """Rotate page ``index`` by a multiple of 90 degrees and rewrite the file."""
+        if self._doc is None or self.path is None:
+            raise RuntimeError("No document open")
+        if not (0 <= index < self._doc.page_count):
+            raise IndexError(f"Page {index} out of range")
+        if delta_deg % 90 != 0:
+            raise ValueError("Rotation must be a multiple of 90 degrees")
+
+        def mutate(work: fitz.Document) -> None:
+            page = work[index]
+            page.set_rotation((page.rotation + delta_deg) % 360)
+
+        self._rewrite_in_place(mutate)
+
+    def append_pdf(self, source_path: str) -> None:
+        """Append every page of ``source_path`` to the end of this document."""
+        if self._doc is None or self.path is None:
+            raise RuntimeError("No document open")
+        if os.path.abspath(source_path) == os.path.abspath(self.path):
+            raise ValueError("Cannot append a document to itself")
+
+        def mutate(work: fitz.Document) -> None:
+            src = fitz.open(source_path)
+            try:
+                if src.needs_pass:
+                    raise ValueError("The PDF to append is password-protected")
+                work.insert_pdf(src)
+            finally:
+                src.close()
+
+        self._rewrite_in_place(mutate)
+
+    def _rewrite_in_place(self, mutate) -> None:
+        """Apply ``mutate(work)`` to a temp copy, then atomically replace the file.
+
+        Full rewrite to a fresh file (PyMuPDF refuses a non-incremental save back
+        onto the path it opened), so removed objects are actually dropped and the
+        file shrinks. A failure at any point leaves the original untouched.
+        """
+        if self._doc is None or self.path is None:
+            raise RuntimeError("No document open")
         target = os.path.abspath(self.path)
         directory = os.path.dirname(target) or "."
         fd, tmp_path = tempfile.mkstemp(suffix=".pdf", dir=directory)
@@ -289,10 +332,7 @@ class PdfDocument:
         try:
             work = fitz.open(target)
             try:
-                work.delete_page(index)
-                # Full rewrite to a fresh file (PyMuPDF refuses a non-incremental
-                # save back onto the path it opened), so the removed page's objects
-                # are actually dropped and the file shrinks.
+                mutate(work)
                 work.save(tmp_path, garbage=4, deflate=True)
             finally:
                 work.close()

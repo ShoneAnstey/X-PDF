@@ -79,6 +79,43 @@ def test_delete_only_page_raises(tmp_path):
         d.close()
 
 
+def test_rotate_page(doc, pdf_path):
+    version = doc.structure_version
+    doc.rotate_page(1, 90)
+    assert doc.structure_version == version + 1
+    with fitz.open(pdf_path) as check:
+        assert check[1].rotation == 90
+        assert check[0].rotation == 0
+    # Rotating back restores the original orientation.
+    doc.rotate_page(1, -90)
+    with fitz.open(pdf_path) as check:
+        assert check[1].rotation == 0
+
+
+def test_rotate_page_invalid_angle(doc):
+    with pytest.raises(ValueError):
+        doc.rotate_page(0, 45)
+
+
+def test_append_pdf(doc, pdf_path, tmp_path):
+    other = str(tmp_path / "other.pdf")
+    make_pdf(other, pages=2, text="Appended")
+    version = doc.structure_version
+    doc.append_pdf(other)
+    assert doc.page_count == 5
+    assert doc.structure_version == version + 1
+    with fitz.open(pdf_path) as check:
+        assert check.page_count == 5
+        assert "Appended page 1" in check[3].get_text()
+        assert "Appended page 2" in check[4].get_text()
+
+
+def test_append_pdf_to_itself_raises(doc, pdf_path):
+    with pytest.raises(ValueError):
+        doc.append_pdf(pdf_path)
+    assert doc.page_count == 3
+
+
 def test_delete_out_of_range(doc):
     with pytest.raises(IndexError):
         doc.delete_page(99)

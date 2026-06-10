@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 
 from PySide6.QtCore import QEvent, QPoint, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPen, QShortcut
@@ -60,6 +61,9 @@ class DocumentTab(QWidget):
         self._signature: SignatureItem | None = None
         self._texts: list[TextItem] = []
         self._highlights: list[HighlightItem] = []
+        # Undo stack for annotation placement/removal: each entry reverses one
+        # user action. Cleared whenever the overlays are saved or discarded.
+        self._undo_stack: list[Callable[[], None]] = []
 
         # Search state: matches are kept in PDF-point coords per page so they
         # survive zoom; overlays are rebuilt from them on every re-render. Pages
@@ -436,12 +440,12 @@ class DocumentTab(QWidget):
     # ----- navigation --------------------------------------------------------
     def ok_to_discard_annotations(self) -> bool:
         """Ask before throwing away any placed-but-unsaved annotations."""
-        if self._signature is None and not self._texts:
+        if not self.has_annotations:
             return True
         reply = QMessageBox.warning(
             self,
             "Unsaved changes",
-            "You placed a signature or text but haven't saved it yet. Discard them?",
+            "You placed annotations but haven't saved them yet. Discard them?",
             QMessageBox.Discard | QMessageBox.Cancel,
         )
         return reply == QMessageBox.Discard
@@ -480,6 +484,8 @@ class DocumentTab(QWidget):
 
         menu = QMenu(self)
         extract_act = menu.addAction(f"Extract page {page_index + 1} to new PDF...")
+        rotate_cw_act = menu.addAction(f"Rotate page {page_index + 1} right")
+        rotate_ccw_act = menu.addAction(f"Rotate page {page_index + 1} left")
         delete_act = menu.addAction(f"Delete page {page_index + 1}")
         # Can't delete the only page.
         delete_act.setEnabled(self.doc.page_count > 1)
@@ -487,6 +493,10 @@ class DocumentTab(QWidget):
         chosen = menu.exec(self.view.viewport().mapToGlobal(view_pos))
         if chosen is extract_act:
             self.extract_page(page_index)
+        elif chosen is rotate_cw_act:
+            self.rotate_page(page_index, 90)
+        elif chosen is rotate_ccw_act:
+            self.rotate_page(page_index, -90)
         elif chosen is delete_act:
             self.delete_page(page_index)
 
@@ -550,8 +560,47 @@ class DocumentTab(QWidget):
         self.structure_changed.emit()
         return True
 
+    def rotate_page(self, page_index: int, delta_deg: int) -> bool:
+        """Rotate page ``page_index`` by 90 degrees and rewrite the file on disk."""
+        if not self.doc.is_open:
+            return False
+        # Rotating rewrites the file, so unsaved overlays (whose page coordinates
+        # would no longer line up) must be discarded first.
+        if not self.ok_to_discard_annotations():
+            return False
+        try:
+            self.doc.rotate_page(page_index, delta_deg)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Rotate failed", f"Could not rotate page:\n{exc}")
+            return False
+        self._discard_overlays()
+        self._clear_matches()
+        self.find_status.clear()
+        self.render_all_pages(preserve_scroll=True)
+        self.structure_changed.emit()
+        return True
+
+    def append_pdf(self, source_path: str) -> bool:
+        """Append all pages of another PDF to this document on disk."""
+        if not self.doc.is_open:
+            return False
+        if not self.ok_to_discard_annotations():
+            return False
+        try:
+            self.doc.append_pdf(source_path)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Append failed", f"Could not append PDF:\n{exc}")
+            return False
+        self._discard_overlays()
+        self._clear_matches()
+        self.find_status.clear()
+        self.render_all_pages(preserve_scroll=True)
+        self.structure_changed.emit()
+        return True
+
     def _discard_overlays(self) -> None:
         """Remove any placed-but-unsaved signature/text/highlight overlays from the scene."""
+        self._undo_stack.clear()
         if self._signature is not None:
             self.scene.removeItem(self._signature)
             self._signature = None
@@ -641,8 +690,14 @@ class DocumentTab(QWidget):
         self.scene.addItem(item)
         item.setSelected(True)
         self._signature = item
+        self._undo_stack.append(lambda: self._undo_remove_signature(item))
         self.view.ensureVisible(item.content_scene_rect(), 20, 20)
         return True
+
+    def _undo_remove_signature(self, item: SignatureItem) -> None:
+        if self._signature is item:
+            self.scene.removeItem(item)
+            self._signature = None
 
     def add_text(self) -> bool:
         """Drop a new editable text item in the centre of the current page."""
@@ -657,12 +712,18 @@ class DocumentTab(QWidget):
         )
         self.scene.addItem(item)
         self._texts.append(item)
+        self._undo_stack.append(lambda: self._undo_remove_text(item))
 
         # Select and focus so typing immediately goes into the box
         item.setSelected(True)
         item.setFocus()
         self.view.ensureVisible(item.boundingRect(), 20, 20)
         return True
+
+    def _undo_remove_text(self, item: TextItem) -> None:
+        if item in self._texts:
+            self._texts.remove(item)
+            self.scene.removeItem(item)
 
     def add_highlight(self) -> bool:
         """Drop a new highlight rectangle in the centre of the current page."""
@@ -678,16 +739,35 @@ class DocumentTab(QWidget):
         )
         self.scene.addItem(item)
         self._highlights.append(item)
+        self._undo_stack.append(lambda: self._undo_remove_highlight(item))
 
         item.setSelected(True)
         item.setFocus()
         self.view.ensureVisible(item.boundingRect(), 20, 20)
         return True
 
+    def _undo_remove_highlight(self, item: HighlightItem) -> None:
+        if item in self._highlights:
+            self._highlights.remove(item)
+            self.scene.removeItem(item)
+
     def _remove_highlight(self, item: HighlightItem) -> None:
         if item in self._highlights:
             self._highlights.remove(item)
             self.scene.removeItem(item)
+            self._undo_stack.append(lambda: self._undo_restore_highlight(item))
+
+    def _undo_restore_highlight(self, item: HighlightItem) -> None:
+        if item not in self._highlights:
+            self._highlights.append(item)
+            self.scene.addItem(item)
+
+    def undo_annotation(self) -> bool:
+        """Reverse the most recent annotation placement/removal. False if nothing to undo."""
+        if not self._undo_stack:
+            return False
+        self._undo_stack.pop()()
+        return True
 
     def rotate_signature(self, delta_deg: int) -> bool:
         """Rotate the placed signature by 90/180/270 degrees. No-op if none placed."""
@@ -811,6 +891,7 @@ class DocumentTab(QWidget):
         self._signature = None
         self._texts.clear()
         self._highlights.clear()
+        self._undo_stack.clear()
         self.render_all_pages(preserve_scroll=True)
         return True
 
