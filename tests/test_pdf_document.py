@@ -189,6 +189,33 @@ def test_save_as_leaves_original_untouched(doc, pdf_path, tmp_path):
     assert spans
 
 
+def test_save_highlight_annotation(doc, pdf_path):
+    """A highlight rect at zoom 2.0 lands as a Highlight annot at half size."""
+    zoom = 2.0
+    ann = PdfAnnotation(
+        page_index=0,
+        rect_pixels=(100.0, 120.0, 500.0, 170.0),  # PDF rect (50, 60, 250, 85)
+        type="highlight",
+    )
+    doc.save_with_annotations(pdf_path, [ann], zoom)
+    with fitz.open(pdf_path) as check:
+        # Keep page references alive: a PyMuPDF Annot segfaults if its parent
+        # Page (e.g. a temporary check[0]) is garbage-collected mid-use.
+        page0, page1 = check[0], check[1]
+        annots = list(page0.annots(types=[fitz.PDF_ANNOT_HIGHLIGHT]))
+        assert len(annots) == 1
+        # The annot's bounding rect is padded by PyMuPDF; the quad vertices
+        # carry the exact highlighted area.
+        xs = [p[0] for p in annots[0].vertices]
+        ys = [p[1] for p in annots[0].vertices]
+        assert min(xs) == pytest.approx(50.0, abs=1.0)
+        assert min(ys) == pytest.approx(60.0, abs=1.0)
+        assert max(xs) == pytest.approx(250.0, abs=1.0)
+        assert max(ys) == pytest.approx(85.0, abs=1.0)
+        assert not list(page1.annots(types=[fitz.PDF_ANNOT_HIGHLIGHT]))
+    assert doc.is_open and doc.page_count == 3
+
+
 def test_copy_to(doc, pdf_path, tmp_path):
     target = str(tmp_path / "dup.pdf")
     doc.copy_to(target)

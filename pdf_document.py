@@ -22,7 +22,7 @@ class PdfAnnotation:
     """A user-placed annotation to be stamped onto a page."""
     page_index: int
     rect_pixels: tuple[float, float, float, float]  # (x0, y0, x1, y1) local to target page at `zoom`
-    type: Literal["image", "text"]
+    type: Literal["image", "text", "highlight"]
 
     # Image properties
     image_path: str | None = None
@@ -119,6 +119,10 @@ class PdfDocument:
                     overlay=True,
                     rotate=ann.rotation,
                 )
+            elif ann.type == "highlight":
+                # A real PDF highlight annotation: multiply-blended yellow that
+                # stays legible over text and is recognised by other viewers.
+                work[ann.page_index].add_highlight_annot(pdf_rect)
             elif ann.type == "text":
                 # The on-screen TextItem uses a 16pt font in scene units, and scene
                 # units map to PDF points via 1/zoom -- so the stamped font size must

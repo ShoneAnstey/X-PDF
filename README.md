@@ -27,6 +27,9 @@ paid PDF suites for everyday reading, signing, and light editing.
 ### Fill & edit
 - **Typewriter / text tool** (`Ctrl+T`) — type directly onto a page (fill forms,
   add notes), then save
+- **Highlighter** (`Ctrl+H`) — drop a marker-yellow highlight, drag it over the
+  text, resize with the corner handle, `Delete` to remove; saved as a real PDF
+  highlight annotation
 - **Page surgery** — right-click any page to **extract it to a new PDF** or
   **delete it** from the document
 
@@ -61,7 +64,7 @@ First use:
 
 ### Shortcuts
 - Open: `Ctrl+O`  •  Close tab: `Ctrl+W`  •  Save: `Ctrl+S`  •  Save As: `Ctrl+Shift+S`
-- Find: `Ctrl+F`  •  Print: `Ctrl+P`  •  Add text: `Ctrl+T`  •  Toggle sidebar: `F9`
+- Find: `Ctrl+F`  •  Print: `Ctrl+P`  •  Add text: `Ctrl+T`  •  Highlight: `Ctrl+H`  •  Toggle sidebar: `F9`
 - Rotate signature: `R` / `Shift+R`
 - Next / Previous page: `PageDown` / `PageUp`
 - Zoom in / out: `Ctrl++` / `Ctrl+-`, or **Ctrl + mouse wheel**
@@ -110,6 +113,7 @@ The unsigned binaries may trigger a SmartScreen warning on first launch
 - `sidebar.py` — page thumbnails + outline navigation panel
 - `signature_item.py` — draggable / resizable / rotatable signature overlay
 - `text_item.py` — draggable typewriter text overlay
+- `highlight_item.py` — draggable / resizable highlight overlay
 - `signature_processing.py` — turns a paper photo into a transparent-background signature
 - `config.py` — remembers signature path, last folder, recent files, window geometry, UI prefs
 - `version.py` — version string + CI build provenance

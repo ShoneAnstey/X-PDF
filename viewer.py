@@ -262,6 +262,11 @@ class MainWindow(QMainWindow):
         self.act_add_text.triggered.connect(self.add_text_annotation)
         self.addAction(self.act_add_text)
 
+        self.act_add_highlight = QAction("Highlight", self)
+        self.act_add_highlight.setShortcut(QKeySequence("Ctrl+H"))
+        self.act_add_highlight.triggered.connect(self.add_highlight_annotation)
+        self.addAction(self.act_add_highlight)
+
         self.act_save = QAction("Save", self)
         self.act_save.setShortcut(QKeySequence.Save)
         self.act_save.triggered.connect(self.save_signed)
@@ -362,6 +367,7 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
 
         toolbar.addAction(self.act_add_text)
+        toolbar.addAction(self.act_add_highlight)
         toolbar.addSeparator()
 
         # Single Signature dropdown replaces the old Set/Add/Sign buttons whose
@@ -393,6 +399,7 @@ class MainWindow(QMainWindow):
             self.act_open, self.act_prev, self.act_next,
             self.act_zoom_out, self.act_zoom_in, self.act_fit,
             self.act_find, self.act_print,
+            self.act_add_text, self.act_add_highlight,
             self.act_set_sig, self.act_add_sig,
             self.act_rotate_sig_cw, self.act_rotate_sig_ccw,
             self.act_save, self.act_save_as,
@@ -489,6 +496,17 @@ class MainWindow(QMainWindow):
                 5000,
             )
 
+    def add_highlight_annotation(self) -> None:
+        tab = self.current_tab()
+        if tab is None:
+            QMessageBox.information(self, "No document", "Open a PDF first.")
+            return
+        if tab.add_highlight():
+            self.statusBar().showMessage(
+                "Drag over the text, drag the corner to resize, Delete to remove, then Save.",
+                6000,
+            )
+
     def rotate_signature(self, delta_deg: int) -> None:
         tab = self.current_tab()
         if tab is None:
@@ -505,7 +523,8 @@ class MainWindow(QMainWindow):
             return
         if not tab.has_annotations:
             QMessageBox.information(
-                self, "No annotations", "Add a signature or text before saving."
+                self, "No annotations",
+                "Add a signature, text, or highlight before saving.",
             )
             return
         if tab.save_signed(config.get_signature_path()):

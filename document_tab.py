@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from pdf_document import PdfDocument, PdfAnnotation
+from highlight_item import HighlightItem
 from signature_item import SignatureItem
 from text_item import TextItem
 
@@ -58,6 +59,7 @@ class DocumentTab(QWidget):
 
         self._signature: SignatureItem | None = None
         self._texts: list[TextItem] = []
+        self._highlights: list[HighlightItem] = []
 
         # Search state: matches are kept in PDF-point coords per page so they
         # survive zoom; overlays are rebuilt from them on every re-render. Pages
@@ -300,6 +302,9 @@ class DocumentTab(QWidget):
         keep_texts = self._texts
         for txt in keep_texts:
             self.scene.removeItem(txt)
+        keep_highlights = self._highlights
+        for hl in keep_highlights:
+            self.scene.removeItem(hl)
 
         self.scene.clear()
         self._page_sizes = []
@@ -311,6 +316,7 @@ class DocumentTab(QWidget):
         self._match_overlays = []
         self._signature = None
         self._texts = []
+        self._highlights = []
 
         self._dpr = self.view.devicePixelRatioF() or 1.0
         sizes = [
@@ -342,6 +348,10 @@ class DocumentTab(QWidget):
         for txt in keep_texts:
             self.scene.addItem(txt)
             self._texts.append(txt)
+
+        for hl in keep_highlights:
+            self.scene.addItem(hl)
+            self._highlights.append(hl)
 
         if preserve_scroll:
             v_bar.setValue(int(v_ratio * v_bar.maximum()))
@@ -541,13 +551,16 @@ class DocumentTab(QWidget):
         return True
 
     def _discard_overlays(self) -> None:
-        """Remove any placed-but-unsaved signature/text overlays from the scene."""
+        """Remove any placed-but-unsaved signature/text/highlight overlays from the scene."""
         if self._signature is not None:
             self.scene.removeItem(self._signature)
             self._signature = None
         for txt in self._texts:
             self.scene.removeItem(txt)
         self._texts = []
+        for hl in self._highlights:
+            self.scene.removeItem(hl)
+        self._highlights = []
 
     # ----- zoom --------------------------------------------------------------
     def zoom_in(self, anchor: QPoint | None = None) -> None:
@@ -651,6 +664,31 @@ class DocumentTab(QWidget):
         self.view.ensureVisible(item.boundingRect(), 20, 20)
         return True
 
+    def add_highlight(self) -> bool:
+        """Drop a new highlight rectangle in the centre of the current page."""
+        if not self._page_sizes:
+            return False
+
+        item = HighlightItem()
+        item.remove_requested.connect(self._remove_highlight)
+        page_rect = self._page_rect_in_scene(self._current_page)
+        item.setPos(
+            page_rect.center().x() - item.boundingRect().width() / 2,
+            page_rect.center().y() - item.boundingRect().height() / 2,
+        )
+        self.scene.addItem(item)
+        self._highlights.append(item)
+
+        item.setSelected(True)
+        item.setFocus()
+        self.view.ensureVisible(item.boundingRect(), 20, 20)
+        return True
+
+    def _remove_highlight(self, item: HighlightItem) -> None:
+        if item in self._highlights:
+            self._highlights.remove(item)
+            self.scene.removeItem(item)
+
     def rotate_signature(self, delta_deg: int) -> bool:
         """Rotate the placed signature by 90/180/270 degrees. No-op if none placed."""
         if self._signature is None:
@@ -662,7 +700,11 @@ class DocumentTab(QWidget):
 
     @property
     def has_annotations(self) -> bool:
-        return self._signature is not None or bool(self._texts)
+        return (
+            self._signature is not None
+            or bool(self._texts)
+            or bool(self._highlights)
+        )
 
     def _collect_annotations(self, sig_path: str | None) -> list[PdfAnnotation] | None:
         """Gather all signatures and texts. Returns None if validation fails."""
@@ -727,6 +769,29 @@ class DocumentTab(QWidget):
                 text=text_str,
             ))
 
+        # 3. Highlights
+        for hl in self._highlights:
+            hl_rect = hl.content_scene_rect()
+            page_index = self._page_for_rect(hl_rect)
+            if page_index < 0:
+                QMessageBox.warning(
+                    self, "Highlight off the page",
+                    "A highlight isn't on a page. Drag it onto a page before saving.",
+                )
+                return None
+            page_rect = self._page_rect_in_scene(page_index)
+            local = (
+                hl_rect.left() - page_rect.left(),
+                hl_rect.top() - page_rect.top(),
+                hl_rect.right() - page_rect.left(),
+                hl_rect.bottom() - page_rect.top(),
+            )
+            annotations.append(PdfAnnotation(
+                page_index=page_index,
+                rect_pixels=local,
+                type="highlight",
+            ))
+
         return annotations
 
     def save_signed(self, sig_path: str) -> bool:
@@ -745,6 +810,7 @@ class DocumentTab(QWidget):
 
         self._signature = None
         self._texts.clear()
+        self._highlights.clear()
         self.render_all_pages(preserve_scroll=True)
         return True
 
