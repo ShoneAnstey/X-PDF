@@ -67,3 +67,27 @@ jobs:
         with:
           name: XPDF-linux
           path: dist/XPDF-x86_64.AppImage
+
+  release:
+    # Publish a GitHub Release with the binaries when a version tag is pushed.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "XPDF ${{ github.ref_name }}" \
+            --generate-notes \
+            "artifacts/XPDF-windows-installer/XPDF-Setup.exe" \
+            "artifacts/XPDF-windows-portable/XPDF.exe" \
+            "artifacts/XPDF-linux/XPDF-x86_64.AppImage"
