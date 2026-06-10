@@ -5,6 +5,22 @@ read: sign, fill, search, print, and reorganize pages — without the bloat,
 subscriptions, or cloud uploads of commercial PDF software. Built to get away from
 paid PDF suites for everyday reading, signing, and light editing.
 
+## Download
+
+Grab the latest release — no account, no installer wizard hassle:
+
+| Platform | Download |
+|----------|----------|
+| **Windows installer** (Desktop + Start Menu shortcuts) | [XPDF-Setup.exe](https://github.com/ShoneAnstey/X-PDF/releases/latest/download/XPDF-Setup.exe) |
+| **Windows portable** (no install, just run) | [XPDF.exe](https://github.com/ShoneAnstey/X-PDF/releases/latest/download/XPDF.exe) |
+| **Linux** (portable AppImage) | [XPDF-x86_64.AppImage](https://github.com/ShoneAnstey/X-PDF/releases/latest/download/XPDF-x86_64.AppImage) |
+
+All versions: [Releases page](https://github.com/ShoneAnstey/X-PDF/releases).
+On Linux, make the AppImage executable first: `chmod +x XPDF-x86_64.AppImage`.
+
+The binaries are unsigned, so Windows SmartScreen may warn on first launch —
+choose **More info → Run anyway**.
+
 ### Read & navigate
 - Open, page through, zoom, and fit-to-width
 - **Multiple tabs** — open many PDFs at once; drag tabs to reorder
@@ -73,11 +89,13 @@ First use:
 - Next / Previous page: `PageDown` / `PageUp`
 - Zoom in / out: `Ctrl++` / `Ctrl+-`, or **Ctrl + mouse wheel**
 
-## Downloads (GitHub Actions)
+## CI builds (GitHub Actions)
 
 PyInstaller cannot cross-compile, so each binary is built on its own OS via the
-bundled workflow (`.github/workflows/build-pdf.yml`). Run it from the **Actions**
-tab (or push a `v*` tag) and download the artifacts:
+bundled workflow (`.github/workflows/build-pdf.yml`). Pushing a `v*` tag builds
+all three binaries and publishes them to a [GitHub Release](https://github.com/ShoneAnstey/X-PDF/releases)
+automatically; the workflow can also be run from the **Actions** tab to get
+artifacts without a release:
 
 | Artifact | Contents |
 |----------|----------|
@@ -106,8 +124,6 @@ Build the `.exe` first, then compile the installer with Inno Setup:
 iscc packaging\xpdf_installer.iss
 REM -> dist\XPDF-Setup.exe   (creates Desktop + Start Menu shortcuts)
 ```
-The unsigned binaries may trigger a SmartScreen warning on first launch
-(choose *More info → Run anyway*).
 
 ## Files
 - `main.py` — entry point, app icon
