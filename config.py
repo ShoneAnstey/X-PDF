@@ -28,24 +28,30 @@ def _settings() -> QSettings:
 
 def get_recent_files() -> list[str]:
     value = _settings().value(_RECENT_FILES, [])
+    # QSettings stores string lists, but a single-entry list can come back as a
+    # plain string on some backends.
     if isinstance(value, str):
         return [value] if value else []
-    if isinstance(value, list) or isinstance(value, tuple):
+    if isinstance(value, (list, tuple)):
         return [str(v) for v in value]
-    # Sometimes it returns a sequence-like object that isn't list/tuple,
-    # but QSettings generally returns a list for stringlists.
-    try:
-        return [str(v) for v in value]  # type: ignore
-    except TypeError:
-        return []
+    return []
+
+
+def set_recent_files(paths: list[str]) -> None:
+    _settings().setValue(_RECENT_FILES, list(paths))
+
 
 def add_recent_file(path: str) -> None:
     recent = get_recent_files()
     if path in recent:
         recent.remove(path)
     recent.insert(0, path)
-    recent = recent[:10]  # keep top 10
-    _settings().setValue(_RECENT_FILES, recent)
+    set_recent_files(recent[:10])  # keep top 10
+
+
+def clear_recent_files() -> None:
+    _settings().remove(_RECENT_FILES)
+
 
 def get_signature_path() -> str | None:
     value = _settings().value(_SIGNATURE_PATH)
@@ -54,6 +60,10 @@ def get_signature_path() -> str | None:
 
 def set_signature_path(path: str) -> None:
     _settings().setValue(_SIGNATURE_PATH, path)
+
+
+def clear_signature_path() -> None:
+    _settings().remove(_SIGNATURE_PATH)
 
 
 def get_last_dir() -> str | None:

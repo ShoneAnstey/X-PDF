@@ -29,6 +29,19 @@ def _icon_path() -> str:
     return ""
 
 
+def _is_pdf_file(path: str) -> bool:
+    """True if ``path`` is an existing PDF, by extension or %PDF header sniff."""
+    if not os.path.isfile(path):
+        return False
+    if path.lower().endswith(".pdf"):
+        return True
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
 def main() -> int:
     if "--version" in sys.argv[1:] or "-V" in sys.argv[1:]:
         print(version_line())
@@ -47,9 +60,10 @@ def main() -> int:
     window = MainWindow()
     window.show()
 
-    # Open any PDFs passed on the command line (e.g. file association).
+    # Open any PDFs passed on the command line (e.g. file association). Files
+    # without a .pdf extension are accepted too if they have a PDF header.
     for arg in sys.argv[1:]:
-        if arg.lower().endswith(".pdf") and os.path.exists(arg):
+        if _is_pdf_file(arg):
             window.open_path(arg)
 
     return app.exec()

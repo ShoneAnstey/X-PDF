@@ -97,6 +97,11 @@ class SignatureSetupDialog(QDialog):
         choose.clicked.connect(self._choose_image)
         layout.addWidget(choose)
 
+        remove = QPushButton("Remove signature", self)
+        remove.setToolTip("Forget the stored signature and delete the cached image")
+        remove.clicked.connect(self._remove_signature)
+        layout.addWidget(remove)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -141,6 +146,21 @@ class SignatureSetupDialog(QDialog):
             QMessageBox.warning(self, "Couldn't prepare signature", str(exc))
             return
         config.set_signature_path(prepared)
+        self._refresh_preview()
+
+    def _remove_signature(self) -> None:
+        """Forget the stored signature; delete the cached copy if we made it."""
+        path = config.get_signature_path()
+        config.clear_signature_path()
+        if path:
+            try:
+                # Only delete files inside our own cache dir -- never a file the
+                # user picked directly from their disk.
+                cache = os.path.abspath(config.cache_dir())
+                if os.path.dirname(os.path.abspath(path)) == cache:
+                    os.remove(path)
+            except OSError:
+                pass
         self._refresh_preview()
 
 
@@ -296,17 +316,29 @@ class MainWindow(QMainWindow):
     def _populate_recent_menu(self) -> None:
         self.menu_recent.clear()
         recent = config.get_recent_files()
-        if not recent:
+        # Prune entries whose files no longer exist so the stored list doesn't
+        # accumulate dead paths forever.
+        existing = [p for p in recent if os.path.exists(p)]
+        if existing != recent:
+            config.set_recent_files(existing)
+        if not existing:
             empty = self.menu_recent.addAction("No recent files")
             empty.setEnabled(False)
             return
 
-        for path in recent:
-            if os.path.exists(path):
-                # Use a closure or default arg to bind the path
-                action = self.menu_recent.addAction(os.path.basename(path))
-                action.setToolTip(path)
-                action.triggered.connect(lambda checked=False, p=path: self.open_path(p))
+        for path in existing:
+            # Use a default arg to bind the path
+            action = self.menu_recent.addAction(os.path.basename(path))
+            action.setToolTip(path)
+            action.triggered.connect(lambda checked=False, p=path: self.open_path(p))
+
+        self.menu_recent.addSeparator()
+        clear = self.menu_recent.addAction("Clear Recent Files")
+        clear.triggered.connect(self._clear_recent_files)
+
+    def _clear_recent_files(self) -> None:
+        config.clear_recent_files()
+        self._populate_recent_menu()
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Main", self)
@@ -382,6 +414,9 @@ class MainWindow(QMainWindow):
             self.open_path(path)
 
     def open_path(self, path: str) -> None:
+        # Normalise so the same file via different spellings (relative path,
+        # drag-drop URL, recent entry) maps to one tab.
+        path = os.path.abspath(path)
         # If the file is already open, just focus its tab.
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
@@ -396,12 +431,11 @@ class MainWindow(QMainWindow):
         tab.changed.connect(self._update_status)
         tab.structure_changed.connect(self._refresh_sidebar)
         tab.changed.connect(self._sync_sidebar_highlight)
-        abs_path = os.path.abspath(path)
-        config.set_last_dir(os.path.dirname(abs_path))
-        config.add_recent_file(abs_path)
+        config.set_last_dir(os.path.dirname(path))
+        config.add_recent_file(path)
         self._populate_recent_menu()
         index = self.tabs.addTab(tab, tab.title)
-        self.tabs.setTabToolTip(index, abs_path)
+        self.tabs.setTabToolTip(index, path)
         # Making the new tab current fires currentChanged -> _on_tab_changed,
         # which updates the status bar and rebuilds the sidebar exactly once.
         self.tabs.setCurrentIndex(index)
@@ -411,7 +445,7 @@ class MainWindow(QMainWindow):
             return
         widget = self.tabs.widget(index)
         if isinstance(widget, DocumentTab):
-            if not widget._ok_to_discard_annotations():
+            if not widget.ok_to_discard_annotations():
                 return
             widget.close_document()
         self.tabs.removeTab(index)
@@ -581,7 +615,7 @@ class MainWindow(QMainWindow):
         # Warn before discarding any placed-but-unsaved annotations.
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
-            if isinstance(widget, DocumentTab) and not widget._ok_to_discard_annotations():
+            if isinstance(widget, DocumentTab) and not widget.ok_to_discard_annotations():
                 event.ignore()
                 return
         config.set_window_geometry(self.saveGeometry())

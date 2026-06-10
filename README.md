@@ -45,6 +45,13 @@ python -m venv .venv
 .venv/bin/python main.py
 ```
 
+Run the tests with:
+
+```bash
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest tests/
+```
+
 First use:
 1. **Signature ▾ → Signature setup...** → pick your signature image (remembered
    after this). No signature file? Sign a blank sheet of paper, take a photo, and

@@ -120,15 +120,17 @@ class PdfDocument:
                     rotate=ann.rotation,
                 )
             elif ann.type == "text":
-                # We need to scale the font size properly. QGraphicsTextItem with a 16pt
-                # font corresponds to 16 PDF points at zoom=1.0.
+                # The on-screen TextItem uses a 16pt font in scene units, and scene
+                # units map to PDF points via 1/zoom -- so the stamped font size must
+                # be divided by zoom just like the rect for WYSIWYG sizing.
+                font_size = 16.0 / zoom
                 # insert_textbox handles text wrapping, but needs slightly more room than
                 # Qt's tight bounding box to prevent it from rejecting the text.
                 text_rect = pdf_rect + (-5, -5, 5, 5)
                 rc = work[ann.page_index].insert_textbox(
                     text_rect,
                     ann.text,
-                    fontsize=16,
+                    fontsize=font_size,
                     fontname="helv",
                     color=(0, 0, 0),
                     align=0,
@@ -137,9 +139,9 @@ class PdfDocument:
                     # If it STILL doesn't fit, use insert_text directly as a fallback
                     # so data is never silently dropped.
                     work[ann.page_index].insert_text(
-                        (pdf_rect.x0, pdf_rect.y0 + 12),
+                        (pdf_rect.x0, pdf_rect.y0 + font_size * 0.75),
                         ann.text,
-                        fontsize=16,
+                        fontsize=font_size,
                         fontname="helv",
                         color=(0, 0, 0),
                     )

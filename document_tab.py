@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QEvent, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -30,6 +30,7 @@ ZOOM_MIN = 0.25
 ZOOM_MAX = 5.0
 ZOOM_STEP = 1.25
 PAGE_GAP = 12.0  # scene-pixel gap between stacked pages
+SEARCH_CHUNK_PAGES = 50  # pages searched per event-loop slice (keeps UI responsive)
 
 
 class DocumentTab(QWidget):
@@ -59,11 +60,17 @@ class DocumentTab(QWidget):
         self._texts: list[TextItem] = []
 
         # Search state: matches are kept in PDF-point coords per page so they
-        # survive zoom; overlays are rebuilt from them on every re-render.
+        # survive zoom; overlays are rebuilt from them on every re-render. Pages
+        # are searched in chunks on a zero-interval timer so a huge document
+        # doesn't freeze the UI.
         self._matches: list[tuple[int, tuple[float, float, float, float]]] = []
         self._match_overlays: list[QGraphicsRectItem] = []
         self._match_index: int = -1
         self._search_text: str = ""
+        self._search_cursor: int = 0
+        self._search_timer = QTimer(self)
+        self._search_timer.setInterval(0)
+        self._search_timer.timeout.connect(self._search_chunk)
 
         self.scene = QGraphicsScene(self)
         self.view = QGraphicsView(self.scene)
@@ -163,9 +170,27 @@ class DocumentTab(QWidget):
         if not text or not self.doc.is_open:
             self.find_status.clear()
             return
-        for i in range(self.doc.page_count):
-            for r in self.doc.search_page(i, text):
+        self._search_cursor = 0
+        # Run the first chunk synchronously so small documents feel instant;
+        # anything left over continues on the timer without blocking the UI.
+        self._search_chunk()
+
+    def _search_chunk(self) -> None:
+        """Search the next slice of pages; finish or re-arm the timer."""
+        if not self.doc.is_open or not self._search_text:
+            self._search_timer.stop()
+            return
+        total = self.doc.page_count
+        end = min(self._search_cursor + SEARCH_CHUNK_PAGES, total)
+        for i in range(self._search_cursor, end):
+            for r in self.doc.search_page(i, self._search_text):
                 self._matches.append((i, (r.x0, r.y0, r.x1, r.y1)))
+        self._search_cursor = end
+        if end < total:
+            self.find_status.setText(f"Searching\u2026 {end}/{total}")
+            self._search_timer.start()
+            return
+        self._search_timer.stop()
         if not self._matches:
             self.find_status.setText("No matches")
             return
@@ -173,6 +198,8 @@ class DocumentTab(QWidget):
         self._set_match_index(0)
 
     def _clear_matches(self) -> None:
+        self._search_timer.stop()
+        self._search_cursor = 0
         for item in self._match_overlays:
             self.scene.removeItem(item)
         self._match_overlays = []
@@ -233,10 +260,11 @@ class DocumentTab(QWidget):
             and event.type() == QEvent.Wheel
             and event.modifiers() & Qt.ControlModifier
         ):
+            anchor = event.position().toPoint()
             if event.angleDelta().y() > 0:
-                self.zoom_in()
+                self.zoom_in(anchor)
             else:
-                self.zoom_out()
+                self.zoom_out(anchor)
             return True  # consume so the view doesn't also scroll
         return super().eventFilter(obj, event)
 
@@ -396,7 +424,7 @@ class DocumentTab(QWidget):
             self.view.verticalScrollBar().setValue(int(top))
 
     # ----- navigation --------------------------------------------------------
-    def _ok_to_discard_annotations(self) -> bool:
+    def ok_to_discard_annotations(self) -> bool:
         """Ask before throwing away any placed-but-unsaved annotations."""
         if self._signature is None and not self._texts:
             return True
@@ -485,7 +513,7 @@ class DocumentTab(QWidget):
             return False
         # Deleting rewrites the file, so any placed-but-unsaved signature or text
         # would be lost. Confirm discarding those first (no prompt if there are none).
-        if not self._ok_to_discard_annotations():
+        if not self.ok_to_discard_annotations():
             return False
         reply = QMessageBox.warning(
             self,
@@ -502,8 +530,11 @@ class DocumentTab(QWidget):
             QMessageBox.critical(self, "Delete failed", f"Could not delete page:\n{exc}")
             return False
         # The delete succeeded: only now is it safe to drop the unsaved overlays
-        # (their page coordinates are no longer valid) and re-render.
+        # (their page coordinates are no longer valid) and re-render. Search
+        # matches also hold pre-delete page indices, so they're invalid too.
         self._discard_overlays()
+        self._clear_matches()
+        self.find_status.clear()
         self._current_page = min(self._current_page, self.doc.page_count - 1)
         self.render_all_pages()
         self.structure_changed.emit()
@@ -519,18 +550,54 @@ class DocumentTab(QWidget):
         self._texts = []
 
     # ----- zoom --------------------------------------------------------------
-    def zoom_in(self) -> None:
-        self._apply_zoom(self.zoom * ZOOM_STEP)
+    def zoom_in(self, anchor: QPoint | None = None) -> None:
+        self._apply_zoom(self.zoom * ZOOM_STEP, anchor)
 
-    def zoom_out(self) -> None:
-        self._apply_zoom(self.zoom / ZOOM_STEP)
+    def zoom_out(self, anchor: QPoint | None = None) -> None:
+        self._apply_zoom(self.zoom / ZOOM_STEP, anchor)
 
-    def _apply_zoom(self, value: float) -> None:
+    def _apply_zoom(self, value: float, anchor: QPoint | None = None) -> None:
+        """Set the zoom level.
+
+        ``anchor`` is an optional viewport position (e.g. the mouse cursor during
+        Ctrl+wheel) that should keep pointing at the same spot on the page after
+        the zoom; without it the scroll position is preserved proportionally.
+        """
         value = max(ZOOM_MIN, min(ZOOM_MAX, value))
         if abs(value - self.zoom) < 1e-6:
             return
+
+        # Capture the document position under the anchor before re-layout:
+        # (page index, offset within the page in PDF points, viewport x/y).
+        anchor_state: tuple[int, float, float, float, float] | None = None
+        if anchor is not None and self._page_pos:
+            scene_pos = self.view.mapToScene(anchor)
+            for i in range(len(self._page_sizes)):
+                if self._page_rect_in_scene(i).contains(scene_pos):
+                    px, py = self._page_pos[i]
+                    anchor_state = (
+                        i,
+                        (scene_pos.x() - px) / self.zoom,
+                        (scene_pos.y() - py) / self.zoom,
+                        float(anchor.x()),
+                        float(anchor.y()),
+                    )
+                    break
+
         self.zoom = value
-        self.render_all_pages(preserve_scroll=True)
+        self.render_all_pages(preserve_scroll=anchor_state is None)
+
+        if anchor_state is not None:
+            page, pt_x, pt_y, view_x, view_y = anchor_state
+            px, py = self._page_pos[page]
+            scene_x = px + pt_x * self.zoom
+            scene_y = py + pt_y * self.zoom
+            viewport = self.view.viewport()
+            self.view.centerOn(
+                scene_x + viewport.width() / 2.0 - view_x,
+                scene_y + viewport.height() / 2.0 - view_y,
+            )
+            self._render_visible()
 
     def fit_width(self) -> None:
         if not self.doc.is_open:
