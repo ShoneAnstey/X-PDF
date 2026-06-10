@@ -28,6 +28,12 @@ class TextItem(QGraphicsTextItem):
         self.setZValue(100)
 
     def paint(self, painter, option, widget=None) -> None:
+        if self.isSelected() or self.hasFocus():
+            # Translucent white backing so the box is visible even on
+            # dark page content while editing. Not part of the saved PDF.
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 200))
+            painter.drawRect(self.boundingRect())
         super().paint(painter, option, widget)
         if self.isSelected():
             # Draw a subtle border when editing/selected
