@@ -19,7 +19,7 @@ echo ">> Installing build tooling (PyInstaller)…"
 
 echo ">> Building one-dir bundle with PyInstaller…"
 rm -rf build "dist/Inkstone"
-"$PY" -m PyInstaller --noconfirm "$ROOT/packaging/xpc_pdf.spec"
+"$PY" -m PyInstaller --noconfirm "$ROOT/packaging/inkstone.spec"
 
 APPDIR="build/AppDir"
 echo ">> Assembling AppDir at $APPDIR…"

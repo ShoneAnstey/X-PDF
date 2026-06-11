@@ -1,7 +1,7 @@
 # PyInstaller spec for Inkstone.
 #
 # Build (run on the TARGET OS — PyInstaller does not cross-compile):
-#   pyinstaller pdf/packaging/xpc_pdf.spec
+#   pyinstaller pdf/packaging/inkstone.spec
 #
 # Windows  -> dist/Inkstone.exe   (portable, double-click to run)
 # Linux    -> dist/Inkstone/      (one-dir bundle, wrapped into an AppImage)

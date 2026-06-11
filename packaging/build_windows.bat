@@ -1,5 +1,5 @@
 @echo off
-REM Build a portable Windows .exe for XPDF.
+REM Build a portable Windows .exe for Inkstone.
 REM
 REM Run on Windows in a terminal (cmd). Requires Python 3.10+ on PATH.
 REM Output: dist\XPDF.exe  (portable, double-click to run)
@@ -22,7 +22,7 @@ python -m pip install -r "%ROOT%\requirements.txt" pyinstaller
 
 echo ^>^> Building with PyInstaller...
 rmdir /s /q build 2>nul
-python -m PyInstaller --noconfirm "%ROOT%\packaging\xpc_pdf.spec"
+python -m PyInstaller --noconfirm "%ROOT%\packaging\inkstone.spec"
 
 echo.
 echo ^>^> Done: dist\XPDF.exe

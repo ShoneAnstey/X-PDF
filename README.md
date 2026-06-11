@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/logo.png" width="128" alt="Inkstone logo — an ink drop on a page" />
+</p>
+
 # Inkstone
 
 A simple, lightweight tabbed PDF reader for Windows and Linux that does more than
