@@ -15,6 +15,6 @@ ReleaseDate: 2026-06-11
 Installers:
 - Architecture: x64
   InstallerUrl: https://github.com/ShoneAnstey/Inkstone/releases/download/v0.8.0/Inkstone-Setup.exe
-  InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+  InstallerSha256: 59708F2436EAB3032E29AC09720F5DAB274B583D23BD32F88AD51E841EFFED05
 ManifestType: installer
 ManifestVersion: 1.10.0
