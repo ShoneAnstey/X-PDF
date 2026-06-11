@@ -1,4 +1,4 @@
-"""Version information for XPDF.
+"""Version information for Inkstone.
 
 ``__version__`` is the single human-facing version number, bumped by hand for
 releases (semantic versioning). Everything else here resolves the *full* build
@@ -19,7 +19,7 @@ import os
 import subprocess
 import sys
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 
 def _base_dir() -> str:
@@ -82,7 +82,7 @@ def version_string() -> str:
 def version_line() -> str:
     """One-line version with build identity, e.g. for --version output."""
     meta = build_metadata()
-    parts = [f"XPDF {version_string()}"]
+    parts = [f"Inkstone {version_string()}"]
     detail = ", ".join(p for p in (meta["commit"], meta["date"]) if p)
     if detail:
         parts.append(f"({detail})")

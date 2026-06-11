@@ -1,0 +1,13 @@
+# Gitleaks config for the pre-commit security gate (Layer 5).
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Files that legitimately contain high-entropy non-secrets."
+paths = [
+    # detect-secrets baseline: stores SHA-1 *hashes* of findings, not secrets.
+    '''\.secrets\.baseline$''',
+    # winget manifests: InstallerSha256 is a public checksum of the release exe.
+    '''packaging/winget/.*\.yaml$''',
+]

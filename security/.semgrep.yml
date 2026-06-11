@@ -1,10 +1,10 @@
-# XPDF Semgrep Rules — Layer 3 Static Security
+# Inkstone Semgrep Rules — Layer 3 Static Security
 # Usage: semgrep --config .semgrep.yml --error --quiet [files...]
 rules:
 
   # ── SQL Injection ────────────────────────────────────────────
 
-  - id: xpdf-sqli-fstring
+  - id: inkstone-sqli-fstring
     patterns:
       - pattern: |
           $CONN.execute(f"...{$VAR}...")
@@ -20,7 +20,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-sqli-format
+  - id: inkstone-sqli-format
     pattern: |
       $CONN.execute("...".format(...))
     message: >
@@ -33,7 +33,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-sqli-percent
+  - id: inkstone-sqli-percent
     pattern: |
       $CONN.execute("..." % ...)
     message: >
@@ -45,7 +45,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-sqli-concat
+  - id: inkstone-sqli-concat
     pattern: |
       $CONN.execute($A + $B)
     message: >
@@ -59,7 +59,7 @@ rules:
 
   # ── Dangerous Functions ──────────────────────────────────────
 
-  - id: xpdf-eval
+  - id: inkstone-eval
     pattern: eval(...)
     message: >
       eval() executes arbitrary code. Use ast.literal_eval() for safe
@@ -71,7 +71,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-exec
+  - id: inkstone-exec
     pattern: exec(...)
     message: >
       exec() executes arbitrary code. Avoid entirely or restrict to
@@ -83,7 +83,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-subprocess-shell
+  - id: inkstone-subprocess-shell
     pattern: subprocess.$FUNC(..., shell=True, ...)
     message: >
       subprocess with shell=True enables command injection. Pass
@@ -95,7 +95,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-pickle-loads
+  - id: inkstone-pickle-loads
     pattern: pickle.loads(...)
     message: >
       pickle.loads() can execute arbitrary code during deserialization.
@@ -107,7 +107,7 @@ rules:
       owasp: "A08:2021"
       layer: 3
 
-  - id: xpdf-pickle-load
+  - id: inkstone-pickle-load
     pattern: pickle.load(...)
     message: >
       pickle.load() can execute arbitrary code. Use JSON or safe alternatives.
@@ -120,7 +120,7 @@ rules:
 
   # ── Secret / Credential Exposure ─────────────────────────────
 
-  - id: xpdf-hardcoded-secret-key
+  - id: inkstone-hardcoded-secret-key
     pattern: |
       SECRET_KEY = "..."
     message: >
@@ -132,7 +132,7 @@ rules:
       owasp: "A07:2021"
       layer: 3
 
-  - id: xpdf-hardcoded-password
+  - id: inkstone-hardcoded-password
     patterns:
       - pattern: |
           $VAR = "..."
@@ -151,7 +151,7 @@ rules:
 
   # ── XSS in Jinja Templates ──────────────────────────────────
 
-  - id: xpdf-jinja-unescaped
+  - id: inkstone-jinja-unescaped
     pattern-regex: '\{\{.*\|\s*safe\s*\}\}'
     message: >
       Jinja2 `|safe` filter disables XSS protection. Only use on
@@ -168,7 +168,7 @@ rules:
 
   # ── Insecure Deserialization ─────────────────────────────────
 
-  - id: xpdf-yaml-unsafe-load
+  - id: inkstone-yaml-unsafe-load
     pattern: yaml.load($X)
     message: >
       yaml.load() without Loader is unsafe. Use yaml.safe_load() instead.
@@ -181,7 +181,7 @@ rules:
 
   # ── Flask Security ──────────────────────────────────────────
 
-  - id: xpdf-flask-debug-true
+  - id: inkstone-flask-debug-true
     pattern: app.run(..., debug=True, ...)
     message: >
       Flask debug mode must not be enabled in production. The debugger
@@ -195,7 +195,7 @@ rules:
 
   # ── JavaScript Security ─────────────────────────────────────
 
-  - id: xpdf-js-innerhtml
+  - id: inkstone-js-innerhtml
     pattern: $EL.innerHTML = $VAL
     message: >
       Direct innerHTML assignment can cause XSS. Use textContent or
@@ -207,7 +207,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-js-eval
+  - id: inkstone-js-eval
     pattern: eval(...)
     message: >
       eval() in JavaScript executes arbitrary code. Use JSON.parse()
@@ -219,7 +219,7 @@ rules:
       owasp: "A03:2021"
       layer: 3
 
-  - id: xpdf-js-document-write
+  - id: inkstone-js-document-write
     pattern: document.write(...)
     message: >
       document.write() can introduce XSS vulnerabilities. Use DOM

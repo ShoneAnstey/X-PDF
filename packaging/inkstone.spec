@@ -1,10 +1,10 @@
-# PyInstaller spec for XPDF.
+# PyInstaller spec for Inkstone.
 #
 # Build (run on the TARGET OS — PyInstaller does not cross-compile):
 #   pyinstaller pdf/packaging/xpc_pdf.spec
 #
-# Windows  -> dist/XPDF.exe   (portable, double-click to run)
-# Linux    -> dist/XPDF/      (one-dir bundle, wrapped into an AppImage)
+# Windows  -> dist/Inkstone.exe   (portable, double-click to run)
+# Linux    -> dist/Inkstone/      (one-dir bundle, wrapped into an AppImage)
 #
 # On Windows the icon is icon.ico; on Linux PyInstaller ignores .ico so we pass None.
 
@@ -61,7 +61,7 @@ if is_windows:
         a.zipfiles,
         a.datas,
         [],
-        name="XPDF",
+        name="Inkstone",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -77,7 +77,7 @@ else:
         a.scripts,
         [],
         exclude_binaries=True,
-        name="XPDF",
+        name="Inkstone",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -92,5 +92,5 @@ else:
         a.datas,
         strip=False,
         upx=False,
-        name="XPDF",
+        name="Inkstone",
     )

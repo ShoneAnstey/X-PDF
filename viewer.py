@@ -67,7 +67,7 @@ SIGNATURE_INSTRUCTIONS = (
     "  3. Transfer the photo to this computer (email, AirDrop, USB \u2014 any way).\n"
     "  4. Click \u201cChoose image\u2026\u201d below and pick that photo.\n"
     "\n"
-    "XPDF removes the paper background automatically, so the signature can be\n"
+    "Inkstone removes the paper background automatically, so the signature can be\n"
     "dropped onto a PDF page as if signed directly on the document."
 )
 
@@ -168,7 +168,7 @@ class SignatureSetupDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(f"XPDF {version_string()}")
+        self.setWindowTitle(f"Inkstone {version_string()}")
         self.resize(1000, 800)
         self.setAcceptDrops(True)
 
@@ -304,7 +304,7 @@ class MainWindow(QMainWindow):
         self.act_dark_mode.setChecked(config.get_dark_mode())
         self.act_dark_mode.triggered.connect(self.toggle_dark_mode)
 
-        self.act_about = QAction("About XPDF", self)
+        self.act_about = QAction("About Inkstone", self)
         self.act_about.triggered.connect(self.show_about)
 
     def _build_menus(self) -> None:
@@ -613,7 +613,7 @@ class MainWindow(QMainWindow):
         meta = build_metadata()
         commit = meta["commit"] or "development build"
         lines = [
-            f"<b>XPDF {version_string()}</b>",
+            f"<b>Inkstone {version_string()}</b>",
             "A simple PDF reader with paper-photo signature stamping.",
             "",
             f"Commit: {commit}",
@@ -622,16 +622,16 @@ class MainWindow(QMainWindow):
             lines.append(f"Built: {meta['date']}")
         lines.append("")
         lines.append("Released into the public domain (The Unlicense).")
-        QMessageBox.about(self, "About XPDF", "<br>".join(lines))
+        QMessageBox.about(self, "About Inkstone", "<br>".join(lines))
 
     def _update_status(self) -> None:
         tab = self.current_tab()
         if tab is not None:
             self.status_label.setText(tab.status_text())
-            self.setWindowTitle(f"XPDF {version_string()} — {tab.title}")
+            self.setWindowTitle(f"Inkstone {version_string()} — {tab.title}")
         else:
             self.status_label.setText("No document")
-            self.setWindowTitle(f"XPDF {version_string()}")
+            self.setWindowTitle(f"Inkstone {version_string()}")
 
     # ----- sidebar & theme ---------------------------------------------------
     def _on_tab_changed(self, _index: int = -1) -> None:

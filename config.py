@@ -12,7 +12,8 @@ import os
 from PySide6.QtCore import QSettings, QStandardPaths
 
 ORG = "XPC"
-APP = "XPDF"
+APP = "Inkstone"
+_LEGACY_APP = "XPDF"  # pre-rename settings live under this name
 
 _SIGNATURE_PATH = "signature/path"
 _LAST_DIR = "files/last_dir"
@@ -23,7 +24,33 @@ _DARK_MODE = "ui/dark_mode"
 _SIDEBAR_VISIBLE = "ui/sidebar_visible"
 
 
+_migrated = False
+
+
+def _migrate_legacy_settings() -> None:
+    """One-time copy of settings saved under the old app name (XPDF).
+
+    Runs at most once per process, and only writes when the new store is
+    still empty — so an existing Inkstone profile is never clobbered.
+    """
+    global _migrated
+    if _migrated:
+        return
+    _migrated = True
+    new = QSettings(ORG, APP)
+    if new.allKeys():
+        return
+    old = QSettings(ORG, _LEGACY_APP)
+    keys = old.allKeys()
+    if not keys:
+        return
+    for key in keys:
+        new.setValue(key, old.value(key))
+    new.sync()
+
+
 def _settings() -> QSettings:
+    _migrate_legacy_settings()
     return QSettings(ORG, APP)
 
 def get_recent_files() -> list[str]:

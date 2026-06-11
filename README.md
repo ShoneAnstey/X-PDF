@@ -1,4 +1,4 @@
-# XPDF
+# Inkstone
 
 A simple, lightweight tabbed PDF reader for Windows and Linux that does more than
 read: sign, fill, search, print, and reorganize pages — without the bloat,
@@ -11,12 +11,12 @@ Grab the latest release — no account, no installer wizard hassle:
 
 | Platform | Download |
 |----------|----------|
-| **Windows installer** (Desktop + Start Menu shortcuts) | [XPDF-Setup.exe](https://github.com/ShoneAnstey/X-PDF/releases/latest/download/XPDF-Setup.exe) |
-| **Windows portable** (no install, just run) | [XPDF.exe](https://github.com/ShoneAnstey/X-PDF/releases/latest/download/XPDF.exe) |
-| **Linux** (portable AppImage) | [XPDF-x86_64.AppImage](https://github.com/ShoneAnstey/X-PDF/releases/latest/download/XPDF-x86_64.AppImage) |
+| **Windows installer** (Desktop + Start Menu shortcuts) | [Inkstone-Setup.exe](https://github.com/ShoneAnstey/Inkstone/releases/latest/download/Inkstone-Setup.exe) |
+| **Windows portable** (no install, just run) | [Inkstone.exe](https://github.com/ShoneAnstey/Inkstone/releases/latest/download/Inkstone.exe) |
+| **Linux** (portable AppImage) | [Inkstone-x86_64.AppImage](https://github.com/ShoneAnstey/Inkstone/releases/latest/download/Inkstone-x86_64.AppImage) |
 
-All versions: [Releases page](https://github.com/ShoneAnstey/X-PDF/releases).
-On Linux, make the AppImage executable first: `chmod +x XPDF-x86_64.AppImage`.
+All versions: [Releases page](https://github.com/ShoneAnstey/Inkstone/releases).
+On Linux, make the AppImage executable first: `chmod +x Inkstone-x86_64.AppImage`.
 
 The binaries are unsigned, so Windows SmartScreen may warn on first launch —
 choose **More info → Run anyway**.
@@ -36,7 +36,7 @@ choose **More info → Run anyway**.
 - Apply your signature: **Signature ▾ → Place signature on page**, drag to
   position, drag the corner to resize, **rotate** with `R` / `Shift+R`, then save
 - **No transparent PNG needed** — sign a blank sheet of paper, photograph it, and
-  open the photo; XPDF removes the paper background automatically (keeps the ink,
+  open the photo; Inkstone removes the paper background automatically (keeps the ink,
   even blue pen, and auto-crops)
 - Remembers your signature image so you only pick it once
 
@@ -93,36 +93,36 @@ First use:
 
 PyInstaller cannot cross-compile, so each binary is built on its own OS via the
 bundled workflow (`.github/workflows/build-pdf.yml`). Pushing a `v*` tag builds
-all three binaries and publishes them to a [GitHub Release](https://github.com/ShoneAnstey/X-PDF/releases)
+all three binaries and publishes them to a [GitHub Release](https://github.com/ShoneAnstey/Inkstone/releases)
 automatically; the workflow can also be run from the **Actions** tab to get
 artifacts without a release:
 
 | Artifact | Contents |
 |----------|----------|
-| `XPDF-windows-installer` | `XPDF-Setup.exe` — installer with Desktop + Start Menu shortcuts |
-| `XPDF-windows-portable` | `XPDF.exe` — portable, no install |
-| `XPDF-linux` | `XPDF-x86_64.AppImage` — portable |
+| `Inkstone-windows-installer` | `Inkstone-Setup.exe` — installer with Desktop + Start Menu shortcuts |
+| `Inkstone-windows-portable` | `Inkstone.exe` — portable, no install |
+| `Inkstone-linux` | `Inkstone-x86_64.AppImage` — portable |
 
 ## Building locally
 
 ### Linux AppImage
 ```bash
 bash packaging/build_appimage.sh
-# -> dist/XPDF-x86_64.AppImage   (chmod +x, then double-click)
+# -> dist/Inkstone-x86_64.AppImage   (chmod +x, then double-click)
 ```
 Needs internet on first run (downloads `appimagetool`).
 
 ### Windows portable .exe (build on Windows)
 ```bat
 packaging\build_windows.bat
-REM -> dist\XPDF.exe   (portable, double-click)
+REM -> dist\Inkstone.exe   (portable, double-click)
 ```
 
 ### Windows installer (build on Windows)
 Build the `.exe` first, then compile the installer with Inno Setup:
 ```bat
-iscc packaging\xpdf_installer.iss
-REM -> dist\XPDF-Setup.exe   (creates Desktop + Start Menu shortcuts)
+iscc packaging\inkstone_installer.iss
+REM -> dist\Inkstone-Setup.exe   (creates Desktop + Start Menu shortcuts)
 ```
 
 ## Files

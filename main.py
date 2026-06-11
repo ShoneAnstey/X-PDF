@@ -1,4 +1,4 @@
-"""XPDF — a simple cross-platform PDF reader with signature stamping.
+"""Inkstone — a simple cross-platform PDF reader with signature stamping.
 
 Entry point: creates the Qt application and shows the main window.
 """
@@ -48,8 +48,8 @@ def main() -> int:
         return 0
 
     app = QApplication(sys.argv)
-    app.setApplicationName("XPDF")
-    app.setApplicationDisplayName("XPDF")
+    app.setApplicationName("Inkstone")
+    app.setApplicationDisplayName("Inkstone")
     app.setApplicationVersion(__version__)
     app.setOrganizationName("XPC")
 

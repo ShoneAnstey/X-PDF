@@ -30,19 +30,19 @@ jobs:
         id: stamp
         run: python packaging/stamp_build.py
       - name: Build .exe
-        run: python -m PyInstaller --noconfirm packaging/xpc_pdf.spec
+        run: python -m PyInstaller --noconfirm packaging/inkstone.spec
       - name: Build installer (Inno Setup)
-        run: iscc /DMyAppVersion=${{ steps.stamp.outputs.version }} packaging\xpdf_installer.iss
+        run: iscc /DMyAppVersion=${{ steps.stamp.outputs.version }} packaging\inkstone_installer.iss
       - name: Upload portable .exe
         uses: actions/upload-artifact@v5
         with:
-          name: XPDF-windows-portable
-          path: "dist/XPDF.exe"
+          name: Inkstone-windows-portable
+          path: "dist/Inkstone.exe"
       - name: Upload installer
         uses: actions/upload-artifact@v5
         with:
-          name: XPDF-windows-installer
-          path: "dist/XPDF-Setup.exe"
+          name: Inkstone-windows-installer
+          path: "dist/Inkstone-Setup.exe"
 
   linux:
     runs-on: ubuntu-latest
@@ -65,8 +65,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: XPDF-linux
-          path: dist/XPDF-x86_64.AppImage
+          name: Inkstone-linux
+          path: dist/Inkstone-x86_64.AppImage
 
   release:
     # Publish a GitHub Release with the binaries when a version tag is pushed.
@@ -86,8 +86,8 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" \
             --repo "${{ github.repository }}" \
-            --title "XPDF ${{ github.ref_name }}" \
+            --title "Inkstone ${{ github.ref_name }}" \
             --generate-notes \
-            "artifacts/XPDF-windows-installer/XPDF-Setup.exe" \
-            "artifacts/XPDF-windows-portable/XPDF.exe" \
-            "artifacts/XPDF-linux/XPDF-x86_64.AppImage"
+            "artifacts/Inkstone-windows-installer/Inkstone-Setup.exe" \
+            "artifacts/Inkstone-windows-portable/Inkstone.exe" \
+            "artifacts/Inkstone-linux/Inkstone-x86_64.AppImage"
